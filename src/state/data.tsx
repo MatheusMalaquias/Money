@@ -9,7 +9,15 @@ import { createIndexedDBStorage } from '../storage/indexeddb'
 import { createMemoryStorage } from '../storage/memory'
 import type { Snapshot, Storage } from '../storage/types'
 
-export const newId = () => crypto.randomUUID()
+/** randomUUID só existe em HTTPS/localhost; abrindo pelo IP da rede (teste no celular) usa getRandomValues, que funciona sempre. */
+export const newId = (): string => {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const b = crypto.getRandomValues(new Uint8Array(16))
+  b[6] = (b[6] & 0x0f) | 0x40 // versão 4
+  b[8] = (b[8] & 0x3f) | 0x80
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+}
 export const nowISO = () => new Date().toISOString()
 
 const upsert = <T extends { id: string }>(list: T[], item: T): T[] =>
