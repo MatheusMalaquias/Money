@@ -102,3 +102,27 @@ describe('gasto médio mensal (meses de reserva)', () => {
     expect(averageMonthlySpend({ transactions: [s({ valorCents: 5_000, data: '2026-01-05' })], mes: '2026-10', moeda: 'BRL', pessoa: 'todos' })).toBe(0)
   })
 })
+
+import { payBill } from '../src/domain/bills'
+
+describe('débito × crédito: pagar uma conta', () => {
+  it('desconta do total e do crédito, e a sobra continua igual', () => {
+    const conta: Bill = {
+      id: 'luz', createdAt: 'c', updatedAt: 'u', descricao: 'Luz', valorCents: 35_000, moeda: 'BRL', vencimento: '2026-10-25', diaAncora: 25,
+      categoriaId: 'c', pessoa: 'casal', recorrencia: 'unica', status: 'pendente', serieId: 's',
+    }
+    const entrada = t({ id: 'e', valorCents: 1_000_000 })
+    const hoje = '2026-10-20'
+    const calc = (bills: Bill[], txs: Transaction[]) => {
+      const tot = summarizeTotals({ ...base, transactions: txs })
+      const cred = summarizeBillsDue({ bills, ate: endOfMonth('2026-10'), hoje, moeda: 'BRL', rates: perUSD, pessoa: 'todos' })
+      return { total: tot.total, credito: cred.total, sobra: tot.disponivel - cred.total }
+    }
+    const antes = calc([conta], [entrada])
+    const r = payBill(conta, { now: 'n', today: hoje, perUSD, newId: () => 'tx-luz' })
+    const depois = calc([r.bill], [entrada, r.transaction])
+    expect(depois.total).toBe(antes.total - 35_000)
+    expect(depois.credito).toBe(antes.credito - 35_000)
+    expect(depois.sobra).toBe(antes.sobra)
+  })
+})

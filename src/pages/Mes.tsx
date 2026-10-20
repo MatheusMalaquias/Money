@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { averageMonthlySpend, endOfMonth, summarizeBillsDue, summarizeTotals } from '../domain/balance'
+import { summarizeMonth } from '../domain/month'
 import { diffDays, monthLabel, todayISO, toBR } from '../domain/dates'
 import { formatMoney } from '../domain/money'
 import { isStale, pairRate } from '../domain/rates'
@@ -34,6 +35,17 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
     () => summarizeBillsDue({ bills, ate: endOfMonth(mes), hoje: todayISO(), moeda: display, rates: settings.rates.perUSD, pessoa }),
     [bills, mes, display, settings.rates.perUSD, pessoa]
   )
+  // crédito total: todas as pendentes, inclusive de meses seguintes (como a fatura toda do cartão, com as parcelas futuras)
+  const dueAll = useMemo(
+    () => summarizeBillsDue({ bills, ate: '9999-12-31', hoje: todayISO(), moeda: display, rates: settings.rates.perUSD, pessoa }),
+    [bills, display, settings.rates.perUSD, pessoa]
+  )
+  // débito: o que já foi pago no mês (contas pagas e gastos), já descontado do total
+  const month = useMemo(
+    () => summarizeMonth({ mes, transactions, bills, rates: settings.rates.perUSD, moeda: display, pessoa }),
+    [mes, transactions, bills, settings.rates.perUSD, display, pessoa]
+  )
+  const pagoNoMes = month.saidas - month.dizimo
   const gastoMedio = useMemo(() => averageMonthlySpend({ transactions, mes, moeda: display, pessoa }), [transactions, mes, display, pessoa])
   const mesesReserva = gastoMedio > 0 ? t.reserva / gastoMedio : null
   const sobra = t.disponivel - due.total
@@ -95,22 +107,30 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
           </Card>
 
           <Card className="space-y-2">
-            <h3 className="text-sm font-semibold text-muted">Depois das contas</h3>
+            <h3 className="text-sm font-semibold text-muted">Contas: já pagas e a pagar</h3>
             <dl className="num space-y-1.5 text-sm">
-              <div className="flex justify-between"><dt className="text-muted">Disponível</dt><dd>{formatMoney(t.disponivel, display)}</dd></div>
               <div className="flex justify-between">
-                <dt className="text-muted">Contas a pagar{due.count > 0 ? ` (${due.count})` : ''}</dt>
+                <dt className="text-muted">Débito · já pago em {monthLabel(mes)}</dt>
+                <dd>{formatMoney(pagoNoMes, display)}</dd>
+              </div>
+              <p className="!mt-0 text-xs text-muted">Contas pagas e gastos do mês. Já estão descontados do total acima.</p>
+              <div className="flex justify-between pt-1">
+                <dt className="text-muted">Crédito · a pagar até o fim do mês{due.count > 0 ? ` (${due.count})` : ''}</dt>
                 <dd className={due.vencidas.count > 0 ? 'text-bad' : ''}>− {formatMoney(due.total, display)}</dd>
               </div>
               {due.vencidas.count > 0 && (
                 <div className="flex justify-between text-xs text-bad"><dt>· já vencidas ({due.vencidas.count})</dt><dd>{formatMoney(due.vencidas.total, display)}</dd></div>
               )}
-              <div className="flex justify-between border-t border-line pt-2 text-base font-semibold">
-                <dt>Sobra depois das contas</dt>
+              {dueAll.count > due.count && (
+                <div className="flex justify-between text-xs text-muted"><dt>Todas as pendentes, com meses seguintes ({dueAll.count})</dt><dd>{formatMoney(dueAll.total, display)}</dd></div>
+              )}
+              <div className="flex justify-between border-t border-line pt-2"><dt className="text-muted">Disponível</dt><dd>{formatMoney(t.disponivel, display)}</dd></div>
+              <div className="flex justify-between text-base font-semibold">
+                <dt>Sobra depois do crédito</dt>
                 <dd className={sobra < 0 ? 'text-bad' : 'text-good'}>{formatMoney(sobra, display)}</dd>
               </div>
             </dl>
-            <p className="text-xs text-muted">Considera as contas pendentes que vencem até o fim de {monthLabel(mes)}, inclusive as atrasadas, pela cotação de hoje.</p>
+            <p className="text-xs text-muted">O crédito conta as contas pendentes que vencem até o fim de {monthLabel(mes)}, inclusive as atrasadas, pela cotação de hoje.</p>
           </Card>
         </>
       )}
