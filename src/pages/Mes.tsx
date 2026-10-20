@@ -70,68 +70,60 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
           <Card className="space-y-3">
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted">Total que temos{pessoa !== 'todos' ? ` · ${personName(settings, pessoa)}` : ''}</p>
-              <p className={`num text-4xl font-bold tracking-tight ${t.total < 0 ? 'text-bad' : 'text-main'}`}>{formatMoney(t.total, display)}</p>
-              <p className="text-xs text-muted">depois do dízimo e do que foi para a reserva, somando tudo até o fim de {monthLabel(mes)}</p>
+              <p className={`num text-4xl font-bold tracking-tight ${t.total < 0 ? 'text-bad' : ''}`}>{formatMoney(t.total, display)}</p>
+              <p className="text-xs text-muted">depois do dízimo e da reserva · até o fim de {monthLabel(mes)}</p>
             </div>
-
             {pessoa === 'todos' && t.porPessoa.length > 1 && (
-              <div className="divide-y divide-line border-t border-line text-sm">
-                {t.porPessoa
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-t border-line pt-3">
+                {[...t.porPessoa]
                   .sort((a, b) => b.total - a.total)
                   .map((p) => (
-                    <div key={p.pessoa} className="num flex justify-between py-2">
-                      <span className="text-muted">{p.pessoa === COUPLE ? 'Contas em comum' : personName(settings, p.pessoa)}</span>
-                      <span className="font-medium">{formatMoney(p.total, display)}</span>
+                    <div key={p.pessoa}>
+                      <p className="text-xs text-muted">{p.pessoa === COUPLE ? 'Em comum' : personName(settings, p.pessoa)}</p>
+                      <p className={`num text-sm font-semibold ${p.total < 0 ? 'text-bad' : ''}`}>{formatMoney(p.total, display)}</p>
                     </div>
                   ))}
               </div>
             )}
           </Card>
 
-          <Card className="space-y-3">
+          <Card className="space-y-2">
             <div className="flex items-baseline justify-between">
               <h3 className="text-sm font-semibold text-muted">Reserva</h3>
-              <span className="num text-lg font-bold">{formatMoney(t.reserva, display)}</span>
+              <span className="num text-xl font-bold">{formatMoney(t.reserva, display)}</span>
             </div>
-            {mesesReserva !== null && t.reserva > 0 && (
-              <p className="text-xs text-muted">Cobre cerca de {mesesReserva.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} {Math.round(mesesReserva * 10) / 10 === 1 ? 'mês' : 'meses'} de gastos (média de {formatMoney(gastoMedio, display)} por mês).</p>
-            )}
-            <div className="num flex items-baseline justify-between border-t border-line pt-2 text-sm">
-              <span className="text-muted">Tudo junto (total + reserva)</span>
-              <span className="font-semibold">{formatMoney(t.junto, display)}</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setReserving('in')} className="rounded-lg bg-accent py-2.5 text-sm font-semibold text-on-accent">Guardar na reserva</button>
-              <button onClick={() => setReserving('out')} className="rounded-lg border border-line py-2.5 text-sm font-medium text-accent">Tirar da reserva</button>
-            </div>
-            <button onClick={() => setReserving('add')} className="w-full text-xs text-muted underline">Informar o que a reserva já tinha</button>
+            <p className="num text-xs text-muted">
+              Tudo junto: {formatMoney(t.junto, display)}
+              {mesesReserva !== null && t.reserva > 0 && ` · cobre ${mesesReserva.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${Math.round(mesesReserva * 10) / 10 === 1 ? 'mês' : 'meses'} de gastos`}
+            </p>
+            <button onClick={() => setReserving('in')} className="!mt-3 w-full rounded-lg border border-line py-2.5 text-sm font-medium text-accent">
+              Guardar, tirar ou informar saldo
+            </button>
           </Card>
 
           <Card className="space-y-2">
-            <h3 className="text-sm font-semibold text-muted">Contas: já pagas e a pagar</h3>
+            <h3 className="text-sm font-semibold text-muted">Contas</h3>
             <dl className="num space-y-1.5 text-sm">
               <div className="flex justify-between">
-                <dt className="text-muted">Débito · já pago em {monthLabel(mes)}</dt>
+                <dt className="text-muted">Já pago no mês</dt>
                 <dd>{formatMoney(pagoNoMes, display)}</dd>
               </div>
-              <p className="!mt-0 text-xs text-muted">Contas pagas e gastos do mês. Já estão descontados do total acima.</p>
-              <div className="flex justify-between pt-1">
-                <dt className="text-muted">Crédito · a pagar até o fim do mês{due.count > 0 ? ` (${due.count})` : ''}</dt>
+              <div className="flex justify-between">
+                <dt className="text-muted">A pagar até o fim do mês{due.count > 0 ? ` (${due.count})` : ''}</dt>
                 <dd className={due.vencidas.count > 0 ? 'text-bad' : ''}>− {formatMoney(due.total, display)}</dd>
               </div>
               {due.vencidas.count > 0 && (
-                <div className="flex justify-between text-xs text-bad"><dt>· já vencidas ({due.vencidas.count})</dt><dd>{formatMoney(due.vencidas.total, display)}</dd></div>
+                <div className="flex justify-between text-xs text-bad"><dt>· atrasadas ({due.vencidas.count})</dt><dd>{formatMoney(due.vencidas.total, display)}</dd></div>
               )}
               {dueAll.count > due.count && (
-                <div className="flex justify-between text-xs text-muted"><dt>Todas as pendentes, com meses seguintes ({dueAll.count})</dt><dd>{formatMoney(dueAll.total, display)}</dd></div>
+                <div className="flex justify-between text-xs text-muted"><dt>Todas as pendentes, com meses seguintes</dt><dd>{formatMoney(dueAll.total, display)}</dd></div>
               )}
-              <div className="flex justify-between border-t border-line pt-2"><dt className="text-muted">Total que temos</dt><dd>{formatMoney(t.total, display)}</dd></div>
-              <div className="flex justify-between text-base font-semibold">
-                <dt>Sobra depois do crédito</dt>
+              <div className="flex justify-between border-t border-line pt-2 text-base font-semibold">
+                <dt>Sobra depois das contas</dt>
                 <dd className={sobra < 0 ? 'text-bad' : 'text-good'}>{formatMoney(sobra, display)}</dd>
               </div>
             </dl>
-            <p className="text-xs text-muted">O crédito conta as contas pendentes que vencem até o fim de {monthLabel(mes)}, inclusive as atrasadas, pela cotação de hoje.</p>
+            <p className="text-xs text-muted">O que já foi pago está descontado do total. O "a pagar" inclui as atrasadas.</p>
           </Card>
         </>
       )}

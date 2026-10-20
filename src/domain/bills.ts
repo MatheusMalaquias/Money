@@ -97,3 +97,16 @@ export function reconcileSeries(bill: Bill, all: Bill[], { now, newId }: { now: 
   const removeIds = others.filter((b) => b.status === 'pendente' && b.vencimento > bill.fim!).map((b) => b.id)
   return { add, removeIds }
 }
+
+/**
+ * Registros a gravar ao cadastrar uma conta nova. Se já foi paga (`paidOn`), nasce paga:
+ * cria também o lançamento de saída (para descontar do total) e a próxima ocorrência, como ao marcar como paga.
+ */
+export function planNewBill(bill: Bill, all: Bill[], { paidOn, now, perUSD, newId }: { paidOn?: ISODate; now: string; perUSD: PerUSD; newId: () => string }): { bills: Bill[]; transaction?: Transaction } {
+  let bills = [bill, ...reconcileSeries(bill, all, { now, newId }).add]
+  if (!paidOn) return { bills }
+  const r = payBill(bill, { now, today: paidOn, perUSD, newId, series: [...all, ...bills] })
+  bills = bills.map((b) => (b.id === bill.id ? r.bill : b))
+  if (r.next) bills.push(r.next)
+  return { bills, transaction: r.transaction }
+}

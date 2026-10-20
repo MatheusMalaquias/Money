@@ -84,13 +84,20 @@ export default function Contas({ pessoa, onPessoa }: { pessoa: PersonId | 'todos
       )}
 
       <Fab onClick={() => setEditing('new')} label="Nova conta" />
-      {editing && <BillSheet bill={editing === 'new' ? null : editing} defaultPessoa={pessoa === 'todos' ? 'casal' : pessoa} onClose={() => setEditing(null)} />}
+      {editing && (
+        <BillSheet
+          bill={editing === 'new' ? null : editing}
+          defaultPessoa={pessoa === 'todos' ? 'casal' : pessoa}
+          onSaved={(paid) => setTab(paid ? 'paga' : 'pendente')} // leva para a lista onde a conta caiu
+          onClose={() => setEditing(null)}
+        />
+      )}
     </Screen>
   )
 }
 
-function BillSheet({ bill, defaultPessoa, onClose }: { bill: Bill | null; defaultPessoa: PersonId; onClose: () => void }) {
-  const { categories, settings, bills, saveBill, removeBill, removeBillAndNext } = useApp()
+function BillSheet({ bill, defaultPessoa, onSaved, onClose }: { bill: Bill | null; defaultPessoa: PersonId; onSaved: (paid: boolean) => void; onClose: () => void }) {
+  const { categories, settings, bills, saveBill, createBill, removeBill, removeBillAndNext } = useApp()
   const [descricao, setDescricao] = useState(bill?.descricao ?? '')
   const [amount, setAmount] = useState(bill ? centsToInput(bill.valorCents) : '')
   const [moeda, setMoeda] = useState<Currency>(bill?.moeda ?? settings.moedaExibicao)
@@ -98,6 +105,9 @@ function BillSheet({ bill, defaultPessoa, onClose }: { bill: Bill | null; defaul
   const [categoriaId, setCategoriaId] = useState(bill?.categoriaId ?? categories[0]?.id ?? '')
   const [pessoa, setPessoa] = useState<PersonId>(bill?.pessoa ?? defaultPessoa)
   const [recorrencia, setRecorrencia] = useState<Recurrence>(bill?.recorrencia ?? 'mensal')
+  // só no cadastro: a conta pode já ter sido paga (nasce na aba Pagas e desconta do total)
+  const [situacao, setSituacao] = useState<'pendente' | 'paga'>('pendente')
+  const [pagaEm, setPagaEm] = useState(todayISO())
   const [fimMes, setFimMes] = useState(bill?.fim?.slice(0, 7) ?? '') // 'YYYY-MM' ou vazio = sem fim
   const cents = parseAmount(amount)
   const paid = bill?.status === 'paga'
@@ -105,12 +115,12 @@ function BillSheet({ bill, defaultPessoa, onClose }: { bill: Bill | null; defaul
   const fim = recorrencia !== 'unica' && fimMes ? clampedDate(fimMes, dia) : undefined
   const fimOk = !fim || fim >= vencimento
   const parcelas = fim && fimOk ? occurrences(vencimento, recorrencia, dia, fim).length : 0
-  const valid = descricao.trim().length > 0 && cents !== null && cents > 0 && !!vencimento && !!categoriaId && fimOk
+  const valid = descricao.trim().length > 0 && cents !== null && cents > 0 && !!vencimento && !!categoriaId && fimOk && (situacao === 'pendente' || !!pagaEm)
 
   const save = async () => {
     const now = nowISO()
     const base: Bill = bill ?? { id: newId(), createdAt: now, updatedAt: now, descricao: '', valorCents: 0, moeda, vencimento, diaAncora: 1, categoriaId, pessoa, recorrencia, status: 'pendente', serieId: newId() }
-    await saveBill({
+    const next: Bill = {
       ...base,
       descricao: descricao.trim(),
       valorCents: cents!,
@@ -123,7 +133,10 @@ function BillSheet({ bill, defaultPessoa, onClose }: { bill: Bill | null; defaul
       recorrencia,
       fim,
       updatedAt: now,
-    })
+    }
+    if (bill) await saveBill(next)
+    else await createBill(next, situacao === 'paga' ? pagaEm : undefined)
+    onSaved(!bill && situacao === 'paga')
     onClose()
   }
 
@@ -142,6 +155,14 @@ function BillSheet({ bill, defaultPessoa, onClose }: { bill: Bill | null; defaul
           : undefined
       }
     >
+      {!bill && (
+        <Segmented
+          label="Situação"
+          value={situacao}
+          onChange={setSituacao}
+          options={[{ value: 'pendente', label: 'Ainda não paguei' }, { value: 'paga', label: 'Já foi paga' }]}
+        />
+      )}
       <Field label="Descrição">
         <input autoFocus={!bill} value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: Aluguel" className={inputCls} />
       </Field>
@@ -167,6 +188,14 @@ function BillSheet({ bill, defaultPessoa, onClose }: { bill: Bill | null; defaul
       <Field label="Repetição">
         <Segmented label="Repetição" value={recorrencia} onChange={setRecorrencia} options={[{ value: 'unica', label: 'Única' }, { value: 'mensal', label: 'Mensal' }, { value: 'anual', label: 'Anual' }]} />
       </Field>
+      {!bill && situacao === 'paga' && (
+        <>
+          <Field label="Pago em">
+            <input type="date" value={pagaEm} max={todayISO()} onChange={(e) => setPagaEm(e.target.value)} className={inputCls} />
+          </Field>
+          <p className="text-xs text-muted">Fica em Pagas e já sai do total na data do pagamento.{recorrencia !== 'unica' ? ' A próxima parcela fica em Pendentes.' : ''}</p>
+        </>
+      )}
       {recorrencia !== 'unica' && (
         <Field label="Repetir até (opcional)">
           <input type="month" value={fimMes} min={vencimento.slice(0, 7)} onChange={(e) => setFimMes(e.target.value)} className={inputCls} />

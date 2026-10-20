@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { payBill, reconcileSeries, unpayBill } from '../domain/bills'
+import { payBill, planNewBill, reconcileSeries, unpayBill } from '../domain/bills'
 import { dedupeCategories } from '../domain/categories'
 import { todayISO, diffDays } from '../domain/dates'
 import { defaultSettings, seedCategories } from '../domain/defaults'
@@ -96,6 +96,8 @@ export interface AppData {
   saveTransaction(t: Transaction): Promise<void>
   removeTransaction(id: string): Promise<void>
   saveBill(b: Bill): Promise<void>
+  /** Cadastra uma conta nova; com `paidOn` ela já nasce paga e desconta do total. */
+  createBill(b: Bill, paidOn?: string): Promise<void>
   removeBill(id: string): Promise<void>
   /** Exclui esta conta e as parcelas pendentes seguintes da mesma série. */
   removeBillAndNext(id: string): Promise<void>
@@ -267,6 +269,14 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
     setBills((l) => [...l.filter((x) => !removeIds.includes(x.id)).map((x) => (x.id === b.id ? b : x)), ...(l.some((x) => x.id === b.id) ? [] : [b]), ...add])
   }, [])
 
+  const createBill = useCallback(async (b: Bill, paidOn?: string) => {
+    const { bills: put, transaction } = planNewBill(b, live.current.bills, { paidOn, now: nowISO(), perUSD: live.current.settings.rates.perUSD, newId })
+    await st.current!.putMany('bills', put)
+    if (transaction) await st.current!.put('transactions', transaction)
+    setBills((l) => put.reduce(upsert, l))
+    if (transaction) setTransactions((l) => upsert(l, transaction))
+  }, [])
+
   const unpay = useCallback(async (id: string) => {
     const bill = live.current.bills.find((b) => b.id === id)
     if (!bill || bill.status !== 'paga') return
@@ -360,7 +370,7 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
 
   const value: AppData = {
     ready, persistent, settings, categories, bills, transactions, goals, rules, ratesStatus,
-    saveTransaction, removeTransaction, saveBill, removeBill, removeBillAndNext, pay, unpay, saveGoal, removeGoal, saveCategory, removeCategory, updateSettings, refreshRates, fixRate, exportData, importData,
+    saveTransaction, removeTransaction, saveBill, createBill, removeBill, removeBillAndNext, pay, unpay, saveGoal, removeGoal, saveCategory, removeCategory, updateSettings, refreshRates, fixRate, exportData, importData,
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
