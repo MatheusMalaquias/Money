@@ -1,4 +1,5 @@
 import { DEFAULT_RATES } from './rates'
+import { DEFAULT_CARD } from './card'
 import { DEFAULT_TITHE_BPS } from './tithe'
 import type { Category, Settings } from './types'
 
@@ -21,6 +22,7 @@ export const seedCategories = (now: string, newId: () => string): Category[] =>
 export const defaultSettings = (): Settings => ({
   moedaExibicao: 'BRL',
   dizimoBps: DEFAULT_TITHE_BPS,
+  cartao: DEFAULT_CARD,
   pessoas: [
     { id: 'matheus', nome: 'Matheus' },
     { id: 'gabi', nome: 'Gabi' },

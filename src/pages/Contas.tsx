@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { billState, sortBills } from '../domain/bills'
 import { clampedDate, diffDays, todayISO, toBR } from '../domain/dates'
+import { cardInvoice, DEFAULT_CARD } from '../domain/card'
 import { occurrences } from '../domain/recurrence'
 import { centsToInput, convert, formatMoney, parseAmount } from '../domain/money'
 import type { Bill, Currency, PersonId, Recurrence } from '../domain/types'
@@ -64,7 +65,7 @@ export default function Contas({ pessoa, onPessoa }: { pessoa: PersonId | 'todos
                     <span className={`block truncate text-sm font-medium ${paid ? 'line-through opacity-60' : ''}`}>{b.descricao}</span>
                     <span className={`block truncate text-xs ${due.cls}`}>{due.text}</span>
                     <span className="block truncate text-xs text-muted">
-                      {cat?.nome ?? '—'} · {REC_LABEL[b.recorrencia]} · {personName(settings, b.pessoa)}
+                      {cat?.nome ?? '—'} · {REC_LABEL[b.recorrencia]} · {personName(settings, b.pessoa)}{b.cartao ? ' · Cartão' : ''}
                     </span>
                     {b.fim && !paid && (
                       <span className="block truncate text-xs text-muted">
@@ -102,6 +103,9 @@ function BillSheet({ bill, defaultPessoa, onSaved, onClose }: { bill: Bill | nul
   const [amount, setAmount] = useState(bill ? centsToInput(bill.valorCents) : '')
   const [moeda, setMoeda] = useState<Currency>(bill?.moeda ?? settings.moedaExibicao)
   const [vencimento, setVencimento] = useState(bill?.vencimento ?? todayISO())
+  // só no cadastro: compra no cartão, em que o vencimento vem da fatura (fecha dia 19, vence dia 26)
+  const [origem, setOrigem] = useState<'conta' | 'cartao'>('conta')
+  const [compra, setCompra] = useState(todayISO())
   const [categoriaId, setCategoriaId] = useState(bill?.categoriaId ?? categories[0]?.id ?? '')
   const [pessoa, setPessoa] = useState<PersonId>(bill?.pessoa ?? defaultPessoa)
   const [recorrencia, setRecorrencia] = useState<Recurrence>(bill?.recorrencia ?? 'mensal')
@@ -113,23 +117,28 @@ function BillSheet({ bill, defaultPessoa, onSaved, onClose }: { bill: Bill | nul
   const paid = bill?.status === 'paga'
   // há parcelas pendentes depois desta na mesma conta (mensal/anual)?
   const hasNext = !!bill && bills.some((x) => x.serieId === bill.serieId && x.id !== bill.id && x.status === 'pendente' && x.vencimento >= bill.vencimento)
-  const dia = Number(vencimento.slice(8, 10))
+  const cfg = settings.cartao ?? DEFAULT_CARD
+  const fatura = !bill && origem === 'cartao' ? cardInvoice(compra, cfg) : null
+  const venc = fatura ? fatura.vence : vencimento
+  const dia = Number(venc.slice(8, 10))
   const fim = recorrencia !== 'unica' && fimMes ? clampedDate(fimMes, dia) : undefined
-  const fimOk = !fim || fim >= vencimento
-  const parcelas = fim && fimOk ? occurrences(vencimento, recorrencia, dia, fim).length : 0
-  const valid = descricao.trim().length > 0 && cents !== null && cents > 0 && !!vencimento && !!categoriaId && fimOk && (situacao === 'pendente' || !!pagaEm)
+  const fimOk = !fim || fim >= venc
+  const parcelas = fim && fimOk ? occurrences(venc, recorrencia, dia, fim).length : 0
+  const valid = descricao.trim().length > 0 && cents !== null && cents > 0 && !!venc && !!categoriaId && fimOk && (situacao === 'pendente' || !!pagaEm)
 
   const save = async () => {
     const now = nowISO()
-    const base: Bill = bill ?? { id: newId(), createdAt: now, updatedAt: now, descricao: '', valorCents: 0, moeda, vencimento, diaAncora: 1, categoriaId, pessoa, recorrencia, status: 'pendente', serieId: newId() }
+    const base: Bill = bill ?? { id: newId(), createdAt: now, updatedAt: now, descricao: '', valorCents: 0, moeda, vencimento: venc, diaAncora: 1, categoriaId, pessoa, recorrencia, status: 'pendente', serieId: newId() }
     const next: Bill = {
       ...base,
       descricao: descricao.trim(),
       valorCents: cents!,
       moeda,
-      vencimento,
+      vencimento: venc,
+      cartao: bill ? bill.cartao : fatura ? true : undefined,
+      compraEm: bill ? bill.compraEm : fatura ? compra : undefined,
       // o dia escolhido vira a âncora: assim uma conta do dia 31 não "escorrega" para o 28 depois de fevereiro
-      diaAncora: Number(vencimento.slice(8, 10)),
+      diaAncora: dia,
       categoriaId,
       pessoa,
       recorrencia,
@@ -183,6 +192,18 @@ function BillSheet({ bill, defaultPessoa, onSaved, onClose }: { bill: Bill | nul
           options={[{ value: 'pendente', label: 'Ainda não paguei' }, { value: 'paga', label: 'Já foi paga' }]}
         />
       )}
+      {!bill && (
+        <Segmented
+          label="Tipo"
+          value={origem}
+          // compra no cartão costuma ser única (ou parcelada: aí escolha Mensal e o mês final); conta fixa costuma ser mensal
+          onChange={(v) => {
+            setOrigem(v)
+            setRecorrencia(v === 'cartao' ? 'unica' : 'mensal')
+          }}
+          options={[{ value: 'conta', label: 'Conta com vencimento' }, { value: 'cartao', label: 'Compra no cartão' }]}
+        />
+      )}
       <Field label="Descrição">
         <input autoFocus={!bill} value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: Aluguel" className={inputCls} />
       </Field>
@@ -191,15 +212,26 @@ function BillSheet({ bill, defaultPessoa, onSaved, onClose }: { bill: Bill | nul
       </Field>
       <ConversionHint cents={cents} from={moeda} to={settings.moedaExibicao} rates={settings.rates} />
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Vencimento">
-          <input type="date" value={vencimento} onChange={(e) => setVencimento(e.target.value)} className={inputCls} />
-        </Field>
+        {fatura ? (
+          <Field label="Data da compra">
+            <input type="date" value={compra} onChange={(e) => setCompra(e.target.value)} className={inputCls} />
+          </Field>
+        ) : (
+          <Field label="Vencimento">
+            <input type="date" value={vencimento} onChange={(e) => setVencimento(e.target.value)} className={inputCls} />
+          </Field>
+        )}
         <Field label="Quem paga">
           <select value={pessoa} onChange={(e) => setPessoa(e.target.value)} className={inputCls}>
             {peopleOptions(settings).map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
           </select>
         </Field>
       </div>
+      {fatura && (
+        <p className="rounded-lg bg-raised px-3 py-2 text-xs text-muted">
+          Entra na fatura que fecha em <b className="text-main">{toBR(fatura.fecha)}</b> e vence em <b className="text-main">{toBR(fatura.vence)}</b>. Compra até o dia {cfg.fechamento} cai nessa fatura; depois dele, na seguinte.
+        </p>
+      )}
       <Field label="Categoria">
         <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className={inputCls}>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
@@ -218,7 +250,7 @@ function BillSheet({ bill, defaultPessoa, onSaved, onClose }: { bill: Bill | nul
       )}
       {recorrencia !== 'unica' && (
         <Field label="Repetir até (opcional)">
-          <input type="month" value={fimMes} min={vencimento.slice(0, 7)} onChange={(e) => setFimMes(e.target.value)} className={inputCls} />
+          <input type="month" value={fimMes} min={venc.slice(0, 7)} onChange={(e) => setFimMes(e.target.value)} className={inputCls} />
         </Field>
       )}
       {recorrencia !== 'unica' && (
@@ -228,7 +260,7 @@ function BillSheet({ bill, defaultPessoa, onSaved, onClose }: { bill: Bill | nul
             : fim
               ? bill
                 ? `Termina em ${toBR(fim).slice(3)}. As parcelas que faltarem até lá serão criadas; as que passarem desse mês, removidas.`
-                : `Serão criadas ${parcelas} ${parcelas === 1 ? 'parcela' : 'parcelas'}, de ${toBR(vencimento)} até ${toBR(fim)}.`
+                : `Serão criadas ${parcelas} ${parcelas === 1 ? 'parcela' : 'parcelas'}, de ${toBR(venc)} até ${toBR(fim)}.`
               : 'Sem data final: repete para sempre. Para as últimas parcelas de uma conta, escolha o mês da última.'}
         </p>
       )}

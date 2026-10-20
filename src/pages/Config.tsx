@@ -45,6 +45,7 @@ export default function Config({ theme, onTheme }: { theme: ThemePref; onTheme: 
       </Card>
 
       <TitheCard />
+      <CardCfgCard />
       <RatesCard />
       <CategoriesCard />
       <BackupCard />
@@ -258,5 +259,37 @@ function ResetCard() {
       )}
       {done && <p role="status" className="text-xs text-good">Tudo zerado. O app está como novo.</p>}
     </Card>
+  )
+}
+
+/** Dia em que a fatura do cartão fecha e dia em que vence: usados ao cadastrar compras no cartão. */
+function CardCfgCard() {
+  const { settings, updateSettings } = useApp()
+  const cfg = settings.cartao ?? { fechamento: 19, vencimento: 26 }
+  const save = (patch: Partial<typeof cfg>) => void updateSettings({ cartao: { ...cfg, ...patch } })
+  return (
+    <Card className="space-y-3">
+      <h2 className={h2}>Cartão de crédito</h2>
+      <div className="grid grid-cols-2 gap-3">
+        <DayField label="Fatura fecha no dia" value={cfg.fechamento} onSave={(v) => save({ fechamento: v })} />
+        <DayField label="Vence no dia" value={cfg.vencimento} onSave={(v) => save({ vencimento: v })} />
+      </div>
+      <p className="text-xs text-muted">Ao cadastrar uma conta como "Compra no cartão", o vencimento é calculado sozinho: compra até o dia {cfg.fechamento} entra na fatura que vence dia {cfg.vencimento}; depois dele, na do mês seguinte.</p>
+    </Card>
+  )
+}
+
+function DayField({ label, value, onSave }: { label: string; value: number; onSave: (v: number) => void }) {
+  const [text, setText] = useState(String(value))
+  const commit = () => {
+    const n = Number(text)
+    if (Number.isInteger(n) && n >= 1 && n <= 31) n !== value && onSave(n)
+    else setText(String(value))
+  }
+  return (
+    <label className="block space-y-1">
+      <span className="text-xs font-medium text-muted">{label}</span>
+      <input inputMode="numeric" value={text} onChange={(e) => setText(e.target.value.replace(/\D/g, '').slice(0, 2))} onBlur={commit} className={`${inputCls} num`} />
+    </label>
   )
 }

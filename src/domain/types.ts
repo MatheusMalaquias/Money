@@ -37,6 +37,9 @@ export interface Bill extends Base {
   categoriaId: string
   pessoa: PersonId
   recorrencia: Recurrence
+  /** Compra no cartão de crédito: o vencimento é o da fatura (ver domain/card.ts). */
+  cartao?: boolean
+  compraEm?: ISODate
   /** Último vencimento de uma conta recorrente (ex.: últimas parcelas). Sem isso, repete para sempre. */
   fim?: ISODate
   status: 'pendente' | 'paga'
@@ -94,10 +97,18 @@ export interface RatesState {
   manual: Currency[]
 }
 
+/** Fatura do cartão: dia em que fecha e dia em que vence (1 a 31). */
+export interface CardCfg {
+  fechamento: number
+  vencimento: number
+}
+
 export interface Settings {
   moedaExibicao: Currency
   /** Dízimo sobre as entradas, em pontos-base (1000 = 10%). 0 desliga. */
   dizimoBps: number
+  /** Fatura do cartão de crédito. */
+  cartao?: CardCfg
   pessoas: { id: PersonId; nome: string }[]
   rates: RatesState
   schemaVersion: number
