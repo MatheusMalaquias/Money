@@ -21,6 +21,8 @@ export default function Lancar({ mes, onMes, pessoa, onPessoa }: Props) {
   const [editing, setEditing] = useState<Transaction | 'new' | null>(null)
   const display = settings.moedaExibicao
   const cat = (id: string) => categories.find((c) => c.id === id)
+  // valor real do dízimo de cada entrada (pode diferir de hoje se o percentual mudou depois)
+  const dizimoDe = new Map(transactions.filter((t) => t.dizimoDeId).map((t) => [t.dizimoDeId!, t.valorCents]))
 
   const list = transactions
     .filter((t) => monthKey(t.data) === mes && (pessoa === 'todos' || t.pessoa === pessoa))
@@ -52,6 +54,9 @@ export default function Lancar({ mes, onMes, pessoa, onPessoa }: Props) {
                     <span className={`num block text-sm font-semibold ${entrada ? 'text-good' : 'text-main'}`}>
                       {entrada ? '+' : '−'} {formatMoney(t.valorCents, t.moeda)}
                     </span>
+                    {entrada && t.dizimo && dizimoDe.has(t.id) && (
+                      <span className="num block text-xs text-muted">líquido {formatMoney(t.valorCents - dizimoDe.get(t.id)!, t.moeda)}</span>
+                    )}
                     {t.moeda !== display && (
                       <span className="num block text-xs text-muted">≈ {formatMoney(convert(t.valorCents, t.moeda, display, t.cambio), display)}</span>
                     )}
@@ -140,13 +145,19 @@ function TransactionSheet({ tx, defaultPessoa, onClose }: { tx: Transaction | nu
         </select>
       </Field>
       {tipo === 'entrada' && bps > 0 && (
-        <label className="flex items-center gap-3 rounded-lg bg-raised px-3 py-2.5 text-sm">
-          <input type="checkbox" checked={dizimo} onChange={(e) => setDizimo(e.target.checked)} className="h-5 w-5 accent-[rgb(var(--accent))]" />
-          <span className="flex-1">
-            Descontar dízimo ({bps / 100}%)
-            {cents !== null && dizimo && <span className="num block text-xs text-muted">{formatMoney(titheAmount(cents, bps), moeda)} saem como despesa</span>}
-          </span>
-        </label>
+        <div className="space-y-2 rounded-lg bg-raised px-3 py-2.5 text-sm">
+          <label className="flex items-center gap-3">
+            <input type="checkbox" checked={dizimo} onChange={(e) => setDizimo(e.target.checked)} className="h-5 w-5 accent-[rgb(var(--accent))]" />
+            <span className="flex-1">Descontar dízimo ({bps / 100}%)</span>
+          </label>
+          {cents !== null && cents > 0 && (
+            <dl className="num space-y-1 border-t border-line pt-2 text-xs">
+              <div className="flex justify-between"><dt className="text-muted">Valor recebido</dt><dd>{formatMoney(cents, moeda)}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted">Dízimo ({bps / 100}%)</dt><dd className={dizimo ? '' : 'text-muted line-through'}>− {formatMoney(titheAmount(cents, bps), moeda)}</dd></div>
+              <div className="flex justify-between text-sm font-semibold"><dt>Fica com vocês</dt><dd>{formatMoney(dizimo ? cents - titheAmount(cents, bps) : cents, moeda)}</dd></div>
+            </dl>
+          )}
+        </div>
       )}
       {tx?.contaId && <p className="text-xs text-muted">Gerado ao pagar uma conta. Excluir desfaz o pagamento.</p>}
     </Sheet>

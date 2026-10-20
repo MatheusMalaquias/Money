@@ -38,6 +38,10 @@ export interface TitheSummary {
   total: number
   /** Entradas do mês sobre as quais o dízimo foi calculado. */
   base: number
+  /** O que sobra dessas entradas depois do dízimo (base − dízimo). */
+  liquido: number
+  /** Entradas do mês marcadas sem dízimo: quanto seria o dízimo se fossem incluídas. */
+  semDizimo: { base: number; seria: number }
   /** Dízimo do ano inteiro do mês escolhido. */
   ano: number
   porPessoa: { pessoa: PersonId; total: number }[]
@@ -47,7 +51,7 @@ export interface TitheSummary {
 }
 
 /** Resumo do dízimo de um mês, do ano e por pessoa. Usa o câmbio guardado em cada lançamento. */
-export function summarizeTithe({ mes, transactions, moeda, pessoa }: { mes: string; transactions: Transaction[]; moeda: Currency; pessoa: PersonId | 'todos' }): TitheSummary {
+export function summarizeTithe({ mes, transactions, moeda, pessoa, bps = DEFAULT_TITHE_BPS }: { mes: string; transactions: Transaction[]; moeda: Currency; pessoa: PersonId | 'todos'; bps?: number }): TitheSummary {
   const match = (p: PersonId) => pessoa === 'todos' || p === pessoa
   const conv = (t: Transaction) => convert(t.valorCents, t.moeda, moeda, t.cambio)
   const itens = transactions.filter((t) => t.dizimoDeId && t.data.slice(0, 7) === mes && match(t.pessoa)).sort((a, b) => b.data.localeCompare(a.data))
@@ -60,6 +64,8 @@ export function summarizeTithe({ mes, transactions, moeda, pessoa }: { mes: stri
     porPessoa.set(t.pessoa, (porPessoa.get(t.pessoa) ?? 0) + conv(t))
   }
   const base = transactions.filter((t) => t.tipo === 'entrada' && t.dizimo && t.data.slice(0, 7) === mes && match(t.pessoa)).reduce((s, t) => s + conv(t), 0)
+  const semBase = transactions.filter((t) => t.tipo === 'entrada' && !t.dizimo && t.data.slice(0, 7) === mes && match(t.pessoa)).reduce((s, t) => s + conv(t), 0)
+  const semSeria = transactions.filter((t) => t.tipo === 'entrada' && !t.dizimo && t.data.slice(0, 7) === mes && match(t.pessoa)).reduce((s, t) => s + convert(titheAmount(t.valorCents, bps), t.moeda, moeda, t.cambio), 0)
   const ano = transactions.filter((t) => t.dizimoDeId && t.data.slice(0, 4) === mes.slice(0, 4) && match(t.pessoa)).reduce((s, t) => s + conv(t), 0)
-  return { total, base, ano, porPessoa: [...porPessoa].map(([p, t]) => ({ pessoa: p, total: t })), porMoeda, itens }
+  return { total, base, liquido: base - total, semDizimo: { base: semBase, seria: semSeria }, ano, porPessoa: [...porPessoa].map(([p, t]) => ({ pessoa: p, total: t })), porMoeda, itens }
 }

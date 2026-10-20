@@ -84,6 +84,15 @@ describe('resumo do dízimo', () => {
     expect(s.porMoeda).toEqual({ BRL: 30_000, USD: 40_000, EUR: 0 })
     expect(s.itens.map((i) => i.id).sort()).toEqual(['d1', 'd2'])
   })
+  it('líquido = recebido com dízimo − dízimo; entradas sem dízimo mostram quanto seria', () => {
+    const s = summarizeTithe({ ...base, pessoa: 'todos' })
+    expect(s.liquido).toBe(2_300_000 - 230_000)
+    // i3: R$ 1.000 sem dízimo → seria R$ 100
+    expect(s.semDizimo).toEqual({ base: 100_000, seria: 10_000 })
+  })
+  it('usa o percentual informado na simulação', () => {
+    expect(summarizeTithe({ ...base, pessoa: 'gabi', bps: 2000 }).semDizimo.seria).toBe(20_000)
+  })
   it('por pessoa', () => {
     expect(summarizeTithe({ ...base, pessoa: 'gabi' }).total).toBe(30_000)
     expect(summarizeTithe({ ...base, pessoa: 'matheus' }).total).toBe(200_000)

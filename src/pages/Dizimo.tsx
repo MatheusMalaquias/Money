@@ -11,7 +11,7 @@ import { Card } from '../ui/Screen'
 export default function Dizimo({ mes, pessoa }: { mes: string; pessoa: PersonId | 'todos' }) {
   const { transactions, settings } = useApp()
   const display = settings.moedaExibicao
-  const s = useMemo(() => summarizeTithe({ mes, transactions, moeda: display, pessoa }), [mes, transactions, display, pessoa])
+  const s = useMemo(() => summarizeTithe({ mes, transactions, moeda: display, pessoa, bps: settings.dizimoBps }), [mes, transactions, display, pessoa, settings.dizimoBps])
   const pct = (settings.dizimoBps ?? 1000) / 100
   const others = CURRENCIES.filter((c) => c !== display && s.porMoeda[c] > 0)
 
@@ -20,9 +20,25 @@ export default function Dizimo({ mes, pessoa }: { mes: string; pessoa: PersonId 
       <Card className="space-y-1">
         <p className="text-xs font-medium text-muted">Dízimo do mês{pessoa !== 'todos' ? ` · ${personName(settings, pessoa)}` : ''}</p>
         <p className="num text-3xl font-bold tracking-tight">{formatMoney(s.total, display)}</p>
-        <p className="num text-xs text-muted">
-          {s.base > 0 ? `sobre ${formatMoney(s.base, display)} de entradas (${pct}%)` : `${pct}% das entradas do mês`}
-        </p>
+        {others.length > 0 && (
+          <p className="num text-xs text-muted">
+            Nas moedas originais: {[display, ...others].filter((c) => s.porMoeda[c] > 0).map((c) => formatMoney(s.porMoeda[c], c)).join(' · ')}
+          </p>
+        )}
+      </Card>
+
+      <Card className="space-y-2">
+        <h3 className="text-sm font-semibold text-muted">A conta do mês</h3>
+        <dl className="num space-y-1.5 text-sm">
+          <div className="flex justify-between"><dt className="text-muted">Recebido (com dízimo)</dt><dd>{formatMoney(s.base, display)}</dd></div>
+          <div className="flex justify-between"><dt className="text-muted">Dízimo ({pct}%)</dt><dd>− {formatMoney(s.total, display)}</dd></div>
+          <div className="flex justify-between border-t border-line pt-2 font-semibold"><dt>Fica com vocês</dt><dd>{formatMoney(s.liquido, display)}</dd></div>
+        </dl>
+        {s.semDizimo.base > 0 && (
+          <p className="num rounded-lg bg-raised px-3 py-2 text-xs text-muted">
+            Há {formatMoney(s.semDizimo.base, display)} em entradas sem dízimo neste mês. Se entrassem, o dízimo seria de <b className="text-main">{formatMoney(s.semDizimo.seria, display)}</b>. Para incluir, abra a entrada em Lançar e marque "Descontar dízimo".
+          </p>
+        )}
       </Card>
 
       {pessoa === 'todos' && s.porPessoa.length > 0 && (
@@ -41,14 +57,6 @@ export default function Dizimo({ mes, pessoa }: { mes: string; pessoa: PersonId 
           <span className="text-sm text-muted">No ano de {mes.slice(0, 4)}</span>
           <span className="num text-base font-semibold">{formatMoney(s.ano, display)}</span>
         </div>
-        {others.length > 0 && (
-          <div className="num flex flex-wrap gap-x-4 text-xs text-muted">
-            {[display, ...others].map((c) => (
-              <span key={c}>{formatMoney(s.porMoeda[c], c)}</span>
-            ))}
-            <span>(valores originais do mês)</span>
-          </div>
-        )}
       </Card>
 
       <section>
