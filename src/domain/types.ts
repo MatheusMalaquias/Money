@@ -49,7 +49,10 @@ export interface Bill extends Base {
 }
 
 export interface Transaction extends Base {
-  tipo: 'entrada' | 'saida'
+  /** 'reserva' é dinheiro separado na reserva: não é ganho nem gasto, só muda o que está disponível. */
+  tipo: 'entrada' | 'saida' | 'reserva'
+  /** Só em 'reserva': true = tirou da reserva; false/ausente = guardou. */
+  retirada?: boolean
   valorCents: number
   moeda: Currency
   data: ISODate

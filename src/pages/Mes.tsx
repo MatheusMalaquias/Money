@@ -1,14 +1,16 @@
 import { useMemo, useState } from 'react'
-import { diffDays, todayISO, toBR } from '../domain/dates'
+import { endOfMonth, summarizeTotals } from '../domain/balance'
+import { diffDays, monthLabel, todayISO, toBR } from '../domain/dates'
 import { formatMoney } from '../domain/money'
-import { summarizeMonth } from '../domain/month'
-import { pairRate, isStale } from '../domain/rates'
-import { CURRENCIES, type PersonId } from '../domain/types'
+import { isStale, pairRate } from '../domain/rates'
+import { COUPLE, type PersonId } from '../domain/types'
 import { useApp } from '../state/data'
-import { PersonFilter, Segmented } from '../ui/fields'
-import Dizimo from './Dizimo'
+import { PersonFilter, Segmented, personName } from '../ui/fields'
 import { MonthNav } from '../ui/MonthNav'
+import ReserveSheet from '../ui/ReserveSheet'
 import { Card, Screen } from '../ui/Screen'
+import Dizimo from './Dizimo'
+import Historico from './Historico'
 
 interface Props {
   mes: string
@@ -17,83 +19,69 @@ interface Props {
   onPessoa: (p: PersonId | 'todos') => void
 }
 
+type Aba = 'resumo' | 'historico' | 'dizimo'
+
 export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
-  const { transactions, bills, categories, settings, ratesStatus, refreshRates } = useApp()
-  const [aba, setAba] = useState<'resumo' | 'dizimo'>('resumo')
+  const { transactions, settings, ratesStatus, refreshRates } = useApp()
+  const [aba, setAba] = useState<Aba>('resumo')
+  const [reserving, setReserving] = useState(false)
   const display = settings.moedaExibicao
-  const s = useMemo(
-    () => summarizeMonth({ mes, transactions, bills, rates: settings.rates.perUSD, moeda: display, pessoa }),
-    [mes, transactions, bills, settings.rates.perUSD, display, pessoa]
+  const t = useMemo(
+    () => summarizeTotals({ transactions, ate: endOfMonth(mes), moeda: display, pessoa }),
+    [transactions, mes, display, pessoa]
   )
-  const max = s.porCategoria[0]?.total ?? 1
-  const used = CURRENCIES.filter((c) => c !== display && Object.values(s.porMoeda[c]).some((v) => v !== 0))
   const stale = isStale(settings.rates, todayISO(), diffDays)
   const r = pairRate('USD', display, settings.rates.perUSD)
 
   return (
-    <Screen title="Visão do mês" subtitle="Quanto entrou, saiu e falta pagar">
+    <Screen title="Painel" subtitle="Quanto temos, o que entrou e saiu">
       <MonthNav mes={mes} onChange={onMes} />
       <PersonFilter settings={settings} value={pessoa} onChange={onPessoa} />
-      <Segmented label="Painel" value={aba} onChange={setAba} options={[{ value: 'resumo', label: 'Resumo' }, { value: 'dizimo', label: 'Dízimo' }]} />
+      <Segmented
+        label="Painel"
+        value={aba}
+        onChange={setAba}
+        options={[{ value: 'resumo', label: 'Resumo' }, { value: 'historico', label: 'Histórico' }, { value: 'dizimo', label: 'Dízimo' }]}
+      />
 
-      {aba === 'dizimo' ? (
-        <Dizimo mes={mes} pessoa={pessoa} />
-      ) : (
+      {aba === 'dizimo' && <Dizimo mes={mes} pessoa={pessoa} />}
+      {aba === 'historico' && <Historico mes={mes} pessoa={pessoa} />}
+      {aba === 'resumo' && (
         <>
-
-      <Card className="space-y-1">
-        <p className="text-xs font-medium text-muted">Saldo do mês</p>
-        <p className={`num text-3xl font-bold tracking-tight ${s.saldo < 0 ? 'text-bad' : 'text-main'}`}>{formatMoney(s.saldo, display)}</p>
-      </Card>
-
-      <Card className="divide-y divide-line py-1">
-        <Row label="Entradas" value={formatMoney(s.entradas, display)} cls="text-good" />
-        {s.dizimo > 0 && <Row label="· após o dízimo" value={formatMoney(s.entradas - s.dizimo, display)} cls="text-muted !text-sm !font-medium" />}
-        <Row label="Saídas" value={formatMoney(s.saidas, display)} />
-        {s.dizimo > 0 && <Row label="· dos quais dízimo" value={formatMoney(s.dizimo, display)} cls="text-muted !text-sm !font-medium" />}
-        <Row label="Falta pagar no mês" value={formatMoney(s.faltaPagar, display)} cls={s.faltaPagar > 0 ? 'text-warn' : ''} />
-      </Card>
-
-      {used.length > 0 && (
-        <Card className="space-y-2">
-          <h3 className="text-sm font-semibold text-muted">Em cada moeda (valores originais)</h3>
-          {[display, ...used].map((c) => (
-            <div key={c} className="num flex items-baseline justify-between text-sm">
-              <span className="font-medium">{c}</span>
-              <span className="text-xs text-muted">
-                <span className="text-good">+{formatMoney(s.porMoeda[c].entradas, c)}</span> · −{formatMoney(s.porMoeda[c].saidas, c)} · falta {formatMoney(s.porMoeda[c].faltaPagar, c)}
-              </span>
-            </div>
-          ))}
-        </Card>
-      )}
-
-      <section>
-        <h3 className="mb-2 text-sm font-semibold text-muted">Gastos por categoria</h3>
-        {s.porCategoria.length === 0 ? (
-          <Card className="border-dashed text-sm text-muted">Sem gastos neste mês.</Card>
-        ) : (
           <Card className="space-y-3">
-            {s.porCategoria.map((row) => {
-              const c = categories.find((x) => x.id === row.categoriaId)
-              return (
-                <div key={row.categoriaId} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span>{c?.nome ?? '—'}</span>
-                    <span className="num text-muted">
-                      {formatMoney(row.total, display)} · {Math.round((row.total / s.saidas) * 100)}%
-                    </span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-raised">
-                    <div className="h-full rounded-full" style={{ width: `${(row.total / max) * 100}%`, background: c?.cor ?? '#94a3b8' }} />
-                  </div>
-                </div>
-              )
-            })}
-          </Card>
-        )}
-      </section>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted">Total que temos{pessoa !== 'todos' ? ` · ${personName(settings, pessoa)}` : ''}</p>
+              <p className={`num text-4xl font-bold tracking-tight ${t.total < 0 ? 'text-bad' : 'text-main'}`}>{formatMoney(t.total, display)}</p>
+              <p className="text-xs text-muted">depois do dízimo, somando tudo até o fim de {monthLabel(mes)}</p>
+            </div>
 
+            {pessoa === 'todos' && t.porPessoa.length > 1 && (
+              <div className="divide-y divide-line border-t border-line text-sm">
+                {t.porPessoa
+                  .sort((a, b) => b.total - a.total)
+                  .map((p) => (
+                    <div key={p.pessoa} className="num flex justify-between py-2">
+                      <span className="text-muted">{p.pessoa === COUPLE ? 'Contas em comum' : personName(settings, p.pessoa)}</span>
+                      <span className="font-medium">{formatMoney(p.total, display)}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="space-y-3">
+            <div className="flex items-baseline justify-between">
+              <h3 className="text-sm font-semibold text-muted">Reserva</h3>
+              <span className="num text-lg font-bold">{formatMoney(t.reserva, display)}</span>
+            </div>
+            <div className="num flex items-baseline justify-between border-t border-line pt-2 text-sm">
+              <span className="text-muted">Disponível (total − reserva)</span>
+              <span className={`font-semibold ${t.disponivel < 0 ? 'text-bad' : ''}`}>{formatMoney(t.disponivel, display)}</span>
+            </div>
+            <button onClick={() => setReserving(true)} className="w-full rounded-lg border border-line py-2.5 text-sm font-medium text-accent">
+              Guardar ou tirar da reserva
+            </button>
+          </Card>
         </>
       )}
 
@@ -105,13 +93,8 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
           {ratesStatus === 'loading' ? 'Atualizando…' : ratesStatus === 'error' ? 'Sem conexão · tentar' : 'Atualizar câmbio'}
         </button>
       </div>
+
+      {reserving && <ReserveSheet tx={null} defaultPessoa={pessoa === 'todos' ? settings.pessoas[0].id : pessoa} onClose={() => setReserving(false)} />}
     </Screen>
   )
 }
-
-const Row = ({ label, value, cls = '' }: { label: string; value: string; cls?: string }) => (
-  <div className="flex items-baseline justify-between py-2.5">
-    <span className="text-sm text-muted">{label}</span>
-    <span className={`num text-base font-semibold ${cls}`}>{value}</span>
-  </div>
-)

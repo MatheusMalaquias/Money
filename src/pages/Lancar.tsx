@@ -6,6 +6,7 @@ import { type Currency, type PersonId, type Transaction } from '../domain/types'
 import { newId, nowISO, useApp } from '../state/data'
 import { AmountInput, ConversionHint, Field, PersonFilter, Segmented, inputCls, peopleOptions, personName } from '../ui/fields'
 import { MonthNav } from '../ui/MonthNav'
+import ReserveSheet from '../ui/ReserveSheet'
 import { Card, Screen } from '../ui/Screen'
 import { Fab, Sheet } from '../ui/Sheet'
 
@@ -19,6 +20,7 @@ interface Props {
 export default function Lancar({ mes, onMes, pessoa, onPessoa }: Props) {
   const { transactions, categories, settings } = useApp()
   const [editing, setEditing] = useState<Transaction | 'new' | null>(null)
+  const [reserveEditing, setReserveEditing] = useState<Transaction | null>(null)
   const display = settings.moedaExibicao
   const cat = (id: string) => categories.find((c) => c.id === id)
   // valor real do dízimo de cada entrada (pode diferir de hoje se o percentual mudou depois)
@@ -40,19 +42,20 @@ export default function Lancar({ mes, onMes, pessoa, onPessoa }: Props) {
           {list.map((t) => {
             const c = cat(t.categoriaId)
             const entrada = t.tipo === 'entrada'
+            const reserva = t.tipo === 'reserva'
             return (
               <li key={t.id}>
-                <button onClick={() => setEditing(t.dizimoDeId ? transactions.find((x) => x.id === t.dizimoDeId) ?? t : t)} className="flex w-full items-center gap-3 rounded-xl border border-line bg-card px-3.5 py-3 text-left">
+                <button onClick={() => (t.tipo === 'reserva' ? setReserveEditing(t) : setEditing(t.dizimoDeId ? transactions.find((x) => x.id === t.dizimoDeId) ?? t : t))} className="flex w-full items-center gap-3 rounded-xl border border-line bg-card px-3.5 py-3 text-left">
                   <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ background: c?.cor ?? '#94a3b8' }} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{t.descricao || c?.nome || 'Sem descrição'}</span>
+                    <span className="block truncate text-sm font-medium">{t.descricao || (reserva ? (t.retirada ? 'Retirada da reserva' : 'Guardado na reserva') : c?.nome || 'Sem descrição')}</span>
                     <span className="block truncate text-xs text-muted">
-                      {toBR(t.data)} · {c?.nome ?? '—'} · {personName(settings, t.pessoa)}
+                      {toBR(t.data)} · {reserva ? 'Reserva' : c?.nome ?? '—'} · {personName(settings, t.pessoa)}
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
-                    <span className={`num block text-sm font-semibold ${entrada ? 'text-good' : 'text-main'}`}>
-                      {entrada ? '+' : '−'} {formatMoney(t.valorCents, t.moeda)}
+                    <span className={`num block text-sm font-semibold ${entrada ? 'text-good' : reserva ? 'text-accent' : 'text-main'}`}>
+                      {entrada ? '+' : reserva ? (t.retirada ? '↩' : '→') : '−'} {formatMoney(t.valorCents, t.moeda)}
                     </span>
                     {entrada && dizimoDe.has(t.id) && (
                       <span className="num block text-xs text-muted">líquido {formatMoney(t.valorCents - dizimoDe.get(t.id)!, t.moeda)}</span>
@@ -69,6 +72,7 @@ export default function Lancar({ mes, onMes, pessoa, onPessoa }: Props) {
       )}
 
       <Fab onClick={() => setEditing('new')} label="Novo lançamento" />
+      {reserveEditing && <ReserveSheet tx={reserveEditing} defaultPessoa={reserveEditing.pessoa} onClose={() => setReserveEditing(null)} />}
       {editing && <TransactionSheet tx={editing === 'new' ? null : editing} defaultPessoa={pessoa === 'todos' ? settings.pessoas[0].id : pessoa} onClose={() => setEditing(null)} />}
     </Screen>
   )

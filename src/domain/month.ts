@@ -47,7 +47,7 @@ export function summarizeMonth({ mes, transactions, bills, rates, moeda, pessoa 
     if (t.tipo === 'entrada') {
       entradas += v
       porMoeda[t.moeda].entradas += t.valorCents
-    } else {
+    } else if (t.tipo === 'saida') {
       saidas += v
       if (t.dizimoDeId) dizimo += v
       porMoeda[t.moeda].saidas += t.valorCents
