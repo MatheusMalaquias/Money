@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { endOfMonth, summarizeTotals } from '../domain/balance'
+import { averageMonthlySpend, endOfMonth, summarizeBillsDue, summarizeTotals } from '../domain/balance'
 import { diffDays, monthLabel, todayISO, toBR } from '../domain/dates'
 import { formatMoney } from '../domain/money'
 import { isStale, pairRate } from '../domain/rates'
@@ -7,7 +7,7 @@ import { COUPLE, type PersonId } from '../domain/types'
 import { useApp } from '../state/data'
 import { PersonFilter, Segmented, personName } from '../ui/fields'
 import { MonthNav } from '../ui/MonthNav'
-import ReserveSheet from '../ui/ReserveSheet'
+import ReserveSheet, { type ReserveMode } from '../ui/ReserveSheet'
 import { Card, Screen } from '../ui/Screen'
 import Dizimo from './Dizimo'
 import Historico from './Historico'
@@ -22,14 +22,21 @@ interface Props {
 type Aba = 'resumo' | 'historico' | 'dizimo'
 
 export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
-  const { transactions, settings, ratesStatus, refreshRates } = useApp()
+  const { transactions, bills, settings, ratesStatus, refreshRates } = useApp()
   const [aba, setAba] = useState<Aba>('resumo')
-  const [reserving, setReserving] = useState(false)
+  const [reserving, setReserving] = useState<ReserveMode | null>(null)
   const display = settings.moedaExibicao
   const t = useMemo(
     () => summarizeTotals({ transactions, ate: endOfMonth(mes), moeda: display, pessoa }),
     [transactions, mes, display, pessoa]
   )
+  const due = useMemo(
+    () => summarizeBillsDue({ bills, ate: endOfMonth(mes), hoje: todayISO(), moeda: display, rates: settings.rates.perUSD, pessoa }),
+    [bills, mes, display, settings.rates.perUSD, pessoa]
+  )
+  const gastoMedio = useMemo(() => averageMonthlySpend({ transactions, mes, moeda: display, pessoa }), [transactions, mes, display, pessoa])
+  const mesesReserva = gastoMedio > 0 ? t.reserva / gastoMedio : null
+  const sobra = t.disponivel - due.total
   const stale = isStale(settings.rates, todayISO(), diffDays)
   const r = pairRate('USD', display, settings.rates.perUSD)
 
@@ -74,13 +81,36 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
               <h3 className="text-sm font-semibold text-muted">Reserva</h3>
               <span className="num text-lg font-bold">{formatMoney(t.reserva, display)}</span>
             </div>
+            {mesesReserva !== null && t.reserva > 0 && (
+              <p className="text-xs text-muted">Cobre cerca de {mesesReserva.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} {Math.round(mesesReserva * 10) / 10 === 1 ? 'mês' : 'meses'} de gastos (média de {formatMoney(gastoMedio, display)} por mês).</p>
+            )}
             <div className="num flex items-baseline justify-between border-t border-line pt-2 text-sm">
               <span className="text-muted">Disponível (total − reserva)</span>
               <span className={`font-semibold ${t.disponivel < 0 ? 'text-bad' : ''}`}>{formatMoney(t.disponivel, display)}</span>
             </div>
-            <button onClick={() => setReserving(true)} className="w-full rounded-lg border border-line py-2.5 text-sm font-medium text-accent">
-              Guardar ou tirar da reserva
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setReserving('add')} className="rounded-lg bg-accent py-2.5 text-sm font-semibold text-on-accent">Adicionar valor</button>
+              <button onClick={() => setReserving('in')} className="rounded-lg border border-line py-2.5 text-sm font-medium text-accent">Guardar / tirar</button>
+            </div>
+          </Card>
+
+          <Card className="space-y-2">
+            <h3 className="text-sm font-semibold text-muted">Depois das contas</h3>
+            <dl className="num space-y-1.5 text-sm">
+              <div className="flex justify-between"><dt className="text-muted">Disponível</dt><dd>{formatMoney(t.disponivel, display)}</dd></div>
+              <div className="flex justify-between">
+                <dt className="text-muted">Contas a pagar{due.count > 0 ? ` (${due.count})` : ''}</dt>
+                <dd className={due.vencidas.count > 0 ? 'text-bad' : ''}>− {formatMoney(due.total, display)}</dd>
+              </div>
+              {due.vencidas.count > 0 && (
+                <div className="flex justify-between text-xs text-bad"><dt>· já vencidas ({due.vencidas.count})</dt><dd>{formatMoney(due.vencidas.total, display)}</dd></div>
+              )}
+              <div className="flex justify-between border-t border-line pt-2 text-base font-semibold">
+                <dt>Sobra depois das contas</dt>
+                <dd className={sobra < 0 ? 'text-bad' : 'text-good'}>{formatMoney(sobra, display)}</dd>
+              </div>
+            </dl>
+            <p className="text-xs text-muted">Considera as contas pendentes que vencem até o fim de {monthLabel(mes)}, inclusive as atrasadas, pela cotação de hoje.</p>
           </Card>
         </>
       )}
@@ -94,7 +124,7 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
         </button>
       </div>
 
-      {reserving && <ReserveSheet tx={null} defaultPessoa={pessoa === 'todos' ? settings.pessoas[0].id : pessoa} onClose={() => setReserving(false)} />}
+      {reserving && <ReserveSheet tx={null} initialMode={reserving} defaultPessoa={pessoa === 'todos' ? settings.pessoas[0].id : pessoa} onClose={() => setReserving(null)} />}
     </Screen>
   )
 }

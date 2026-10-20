@@ -53,6 +53,8 @@ export interface Transaction extends Base {
   tipo: 'entrada' | 'saida' | 'reserva'
   /** Só em 'reserva': true = tirou da reserva; false/ausente = guardou. */
   retirada?: boolean
+  /** Só em 'reserva': dinheiro novo que entrou direto na reserva (já tinham guardado, veio de fora). Aumenta o total e a reserva. */
+  aporte?: boolean
   valorCents: number
   moeda: Currency
   data: ISODate

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { endOfMonth, summarizeTotals } from '../src/domain/balance'
+import { averageMonthlySpend, endOfMonth, summarizeBillsDue, summarizeTotals } from '../src/domain/balance'
 import { summarizeMonth } from '../src/domain/month'
-import type { Transaction } from '../src/domain/types'
+import type { Bill, Transaction } from '../src/domain/types'
 
 const perUSD = { USD: 1, BRL: 5, EUR: 0.8 }
 const t = (o: Partial<Transaction>): Transaction => ({
@@ -48,5 +48,57 @@ describe('total que temos', () => {
     const s = summarizeMonth({ mes: '2026-10', transactions: [t({ tipo: 'reserva', valorCents: 99_999 })], bills: [], rates: perUSD, moeda: 'BRL', pessoa: 'todos' })
     expect(s.entradas).toBe(0)
     expect(s.saidas).toBe(0)
+  })
+})
+
+describe('valor adicionado à reserva', () => {
+  it('dinheiro novo na reserva aumenta o total e a reserva, e o disponível não muda', () => {
+    const base0 = summarizeTotals({ ...base, transactions: [t({ id: '1', valorCents: 100_000 })] })
+    const r = summarizeTotals({ ...base, transactions: [t({ id: '1', valorCents: 100_000 }), t({ id: '2', tipo: 'reserva', aporte: true, valorCents: 1_000_000 })] })
+    expect(r.total).toBe(base0.total + 1_000_000)
+    expect(r.reserva).toBe(1_000_000)
+    expect(r.disponivel).toBe(base0.disponivel)
+  })
+  it('guardar do disponível não muda o total (diferente de adicionar)', () => {
+    const r = summarizeTotals({ ...base, transactions: [t({ id: '1', valorCents: 100_000 }), t({ id: '2', tipo: 'reserva', valorCents: 40_000 })] })
+    expect(r.total).toBe(100_000)
+    expect(r.disponivel).toBe(60_000)
+  })
+})
+
+describe('contas registradas no cálculo', () => {
+  const bill = (o: Partial<Bill>): Bill => ({
+    id: 'b', createdAt: 'c', updatedAt: 'u', descricao: 'x', valorCents: 10_000, moeda: 'BRL', vencimento: '2026-10-25', diaAncora: 25,
+    categoriaId: 'c', pessoa: 'casal', recorrencia: 'unica', status: 'pendente', serieId: 's', ...o,
+  })
+  const args = { ate: '2026-10-31', hoje: '2026-10-20', moeda: 'BRL' as const, rates: perUSD, pessoa: 'todos' as const }
+  it('soma pendentes até o fim do mês, convertendo, e separa as vencidas', () => {
+    const r = summarizeBillsDue({
+      ...args,
+      bills: [
+        bill({ id: '1' }), // R$ 100
+        bill({ id: '2', valorCents: 20_000, moeda: 'USD' }), // US$ 200 = R$ 1.000
+        bill({ id: '3', vencimento: '2026-10-10' }), // vencida R$ 100
+        bill({ id: '4', status: 'paga' }),
+        bill({ id: '5', vencimento: '2026-11-05' }), // depois do mês
+      ],
+    })
+    expect(r.total).toBe(10_000 + 100_000 + 10_000)
+    expect(r.count).toBe(3)
+    expect(r.vencidas).toEqual({ total: 10_000, count: 1 })
+  })
+  it('filtra por pessoa', () => {
+    expect(summarizeBillsDue({ ...args, pessoa: 'gabi', bills: [bill({ pessoa: 'gabi' }), bill({ id: '2', pessoa: 'matheus' })] }).count).toBe(1)
+  })
+})
+
+describe('gasto médio mensal (meses de reserva)', () => {
+  const s = (o: Partial<Transaction>) => t({ tipo: 'saida', ...o })
+  it('média dos meses com gasto, sem dízimo', () => {
+    const txs = [s({ id: '1', valorCents: 100_000, data: '2026-10-05' }), s({ id: '2', valorCents: 300_000, data: '2026-09-05' }), s({ id: '3', valorCents: 999_999, data: '2026-10-06', dizimoDeId: 'x' })]
+    expect(averageMonthlySpend({ transactions: txs, mes: '2026-10', moeda: 'BRL', pessoa: 'todos' })).toBe(200_000)
+  })
+  it('ignora meses fora da janela e sem dados dá zero', () => {
+    expect(averageMonthlySpend({ transactions: [s({ valorCents: 5_000, data: '2026-01-05' })], mes: '2026-10', moeda: 'BRL', pessoa: 'todos' })).toBe(0)
   })
 })

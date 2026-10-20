@@ -6,10 +6,19 @@ import { newId, nowISO, useApp } from '../state/data'
 import { AmountInput, ConversionHint, Field, Segmented, inputCls, peopleOptions } from './fields'
 import { Sheet } from './Sheet'
 
+export type ReserveMode = 'in' | 'add' | 'out'
+
+/** Nome e símbolo de um movimento da reserva, usado nas listas. */
+export function reserveInfo(t: Pick<Transaction, 'retirada' | 'aporte'>): { title: string; sign: string } {
+  if (t.aporte) return { title: 'Valor adicionado à reserva', sign: '+' }
+  if (t.retirada) return { title: 'Retirada da reserva', sign: '↩' }
+  return { title: 'Guardado do disponível', sign: '→' }
+}
+
 /** Guardar uma parte do dinheiro na reserva, ou tirar dela. Não é gasto: só muda o que está disponível. */
-export default function ReserveSheet({ tx, defaultPessoa, onClose }: { tx: Transaction | null; defaultPessoa: PersonId; onClose: () => void }) {
+export default function ReserveSheet({ tx, defaultPessoa, initialMode = 'in', onClose }: { tx: Transaction | null; defaultPessoa: PersonId; initialMode?: ReserveMode; onClose: () => void }) {
   const { settings, saveTransaction, removeTransaction } = useApp()
-  const [mode, setMode] = useState<'in' | 'out'>(tx?.retirada ? 'out' : 'in')
+  const [mode, setMode] = useState<ReserveMode>(tx ? (tx.retirada ? 'out' : tx.aporte ? 'add' : 'in') : initialMode)
   const [amount, setAmount] = useState(tx ? centsToInput(tx.valorCents) : '')
   const [moeda, setMoeda] = useState<Currency>(tx?.moeda ?? settings.moedaExibicao)
   const [data, setData] = useState(tx?.data ?? todayISO())
@@ -23,6 +32,7 @@ export default function ReserveSheet({ tx, defaultPessoa, onClose }: { tx: Trans
       ...(tx ?? { id: newId(), createdAt: now }),
       tipo: 'reserva',
       retirada: mode === 'out',
+      aporte: mode === 'add',
       valorCents: cents!,
       moeda,
       data,
@@ -43,7 +53,7 @@ export default function ReserveSheet({ tx, defaultPessoa, onClose }: { tx: Trans
       canSubmit={cents !== null && cents > 0 && !!data}
       danger={tx ? [{ label: 'Excluir', onClick: async () => { await removeTransaction(tx.id); onClose() } }] : undefined}
     >
-      <Segmented label="Operação" value={mode} onChange={setMode} options={[{ value: 'in', label: 'Guardar na reserva' }, { value: 'out', label: 'Tirar da reserva' }]} />
+      <Segmented label="Operação" value={mode} onChange={setMode} options={[{ value: 'add', label: 'Adicionar' }, { value: 'in', label: 'Guardar' }, { value: 'out', label: 'Tirar' }]} />
       <Field label="Valor">
         <AmountInput amount={amount} currency={moeda} onAmount={setAmount} onCurrency={setMoeda} />
       </Field>
@@ -61,7 +71,11 @@ export default function ReserveSheet({ tx, defaultPessoa, onClose }: { tx: Trans
           </select>
         </Field>
       </div>
-      <p className="text-xs text-muted">O dinheiro da reserva continua sendo de vocês: o total não muda, só o que está disponível para gastar.</p>
+      <p className="text-xs text-muted">
+        {mode === 'add' && 'Dinheiro novo na reserva (que já tinham guardado ou veio de fora): o total e a reserva sobem juntos.'}
+        {mode === 'in' && 'Separa uma parte do que já está disponível: o total não muda, só diminui o disponível.'}
+        {mode === 'out' && 'Devolve da reserva para o disponível: o total não muda.'}
+      </p>
     </Sheet>
   )
 }

@@ -6,7 +6,7 @@ import { type PersonId, type Transaction } from '../domain/types'
 import { useApp } from '../state/data'
 import { Segmented, personName } from '../ui/fields'
 import { Card } from '../ui/Screen'
-import ReserveSheet from '../ui/ReserveSheet'
+import ReserveSheet, { reserveInfo } from '../ui/ReserveSheet'
 
 type Kind = 'recebimentos' | 'pagamentos' | 'reserva'
 
@@ -85,7 +85,7 @@ export default function Historico({ mes, pessoa }: { mes: string; pessoa: Person
           {list.map((t) => {
             const cat = categories.find((c) => c.id === t.categoriaId)
             const liquido = kind === 'recebimentos' && dizimoDe.has(t.id) ? t.valorCents - dizimoDe.get(t.id)! : null
-            const title = t.descricao || (t.tipo === 'reserva' ? (t.retirada ? 'Retirada da reserva' : 'Guardado na reserva') : cat?.nome || 'Sem descrição')
+            const title = t.descricao || (t.tipo === 'reserva' ? reserveInfo(t).title : cat?.nome || 'Sem descrição')
             const row = (
               <>
                 <span className="min-w-0 flex-1">
@@ -97,7 +97,7 @@ export default function Historico({ mes, pessoa }: { mes: string; pessoa: Person
                 </span>
                 <span className="shrink-0 text-right">
                   <span className={`num block text-sm font-semibold ${kind === 'recebimentos' ? 'text-good' : ''}`}>
-                    {kind === 'recebimentos' ? '+ ' : kind === 'reserva' ? (t.retirada ? '↩ ' : '→ ') : '− '}
+                    {kind === 'recebimentos' ? '+ ' : kind === 'reserva' ? `${reserveInfo(t).sign} ` : '− '}
                     {formatMoney(t.valorCents, t.moeda)}
                   </span>
                   {liquido !== null && <span className="num block text-xs text-muted">líquido {formatMoney(liquido, t.moeda)}</span>}
