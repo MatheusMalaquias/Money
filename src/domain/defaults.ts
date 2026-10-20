@@ -22,8 +22,8 @@ export const defaultSettings = (): Settings => ({
   moedaExibicao: 'BRL',
   dizimoBps: DEFAULT_TITHE_BPS,
   pessoas: [
-    { id: 'eu', nome: 'Eu' },
-    { id: 'esposa', nome: 'Esposa' },
+    { id: 'matheus', nome: 'Matheus' },
+    { id: 'gabi', nome: 'Gabi' },
   ],
   rates: DEFAULT_RATES,
   schemaVersion: 1,

@@ -11,3 +11,18 @@ export function nextDue(vencimento: ISODate, recorrencia: Recurrence, diaAncora:
   const step = recorrencia === 'mensal' ? 1 : 12
   return clampedDate(addMonths(monthKey(vencimento), step), diaAncora)
 }
+
+const MAX_OCCURRENCES = 240 // 20 anos de contas mensais: trava contra datas digitadas errado
+
+/** Vencimentos de `inicio` até `fim` (inclusive). Sem recorrência, só o próprio `inicio`. */
+export function occurrences(inicio: ISODate, recorrencia: Recurrence, diaAncora: number, fim: ISODate): ISODate[] {
+  const dates = [inicio]
+  let cur = inicio
+  while (dates.length < MAX_OCCURRENCES) {
+    const n = nextDue(cur, recorrencia, diaAncora)
+    if (!n || n > fim) break
+    dates.push(n)
+    cur = n
+  }
+  return dates
+}

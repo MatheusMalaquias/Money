@@ -37,6 +37,8 @@ export interface Bill extends Base {
   categoriaId: string
   pessoa: PersonId
   recorrencia: Recurrence
+  /** Último vencimento de uma conta recorrente (ex.: últimas parcelas). Sem isso, repete para sempre. */
+  fim?: ISODate
   status: 'pendente' | 'paga'
   pagaEm?: ISODate
   /** Lançamento de saída criado ao pagar. */

@@ -60,11 +60,12 @@ export function ConversionHint({ cents, from, to, rates }: { cents: number | nul
   )
 }
 
-export const peopleOptions = (s: Settings): { id: PersonId; nome: string }[] => [...s.pessoas, { id: COUPLE, nome: 'Casal' }]
+export const peopleOptions = (s: Settings): { id: PersonId; nome: string }[] => [...s.pessoas, { id: COUPLE, nome: 'Todos' }]
 export const personName = (s: Settings, id: PersonId) => peopleOptions(s).find((p) => p.id === id)?.nome ?? id
 
 export function PersonFilter({ settings, value, onChange }: { settings: Settings; value: PersonId | 'todos'; onChange: (v: PersonId | 'todos') => void }) {
-  const opts = [{ id: 'todos', nome: 'Todos' }, ...peopleOptions(settings)]
+  // "Todos" já é o casal: por isso não há um quarto filtro
+  const opts = [{ id: 'todos', nome: 'Todos' }, ...settings.pessoas]
   return (
     <div className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
       {opts.map((o) => (

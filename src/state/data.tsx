@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { payBill, unpayBill } from '../domain/bills'
+import { payBill, reconcileSeries, unpayBill } from '../domain/bills'
+import { dedupeCategories } from '../domain/categories'
 import { todayISO, diffDays } from '../domain/dates'
 import { defaultSettings, seedCategories } from '../domain/defaults'
 import { buildTithe, DEFAULT_TITHE_BPS, titheAmount } from '../domain/tithe'
@@ -27,6 +28,60 @@ const upsert = <T extends { id: string }>(list: T[], item: T): T[] =>
 /** O IndexedDB devolve por id: as categorias precisam voltar na ordem que o usuário vê. */
 const byOrder = (l: Category[]) => [...l].sort((a, b) => a.ordem - b.ordem)
 
+
+interface Loaded {
+  storage: Storage
+  persistent: boolean
+  settings: Settings
+  categories: Category[]
+  bills: Bill[]
+  transactions: Transaction[]
+  goals: Goal[]
+  rules: PlanRule[]
+}
+
+/** Abre o banco, faz a primeira execução (configurações e categorias) e as correções de bases antigas. */
+async function loadAll(injected?: Storage): Promise<Loaded> {
+  let storage: Storage
+  let persistent = true
+  try {
+    storage = injected ?? (await createIndexedDBStorage())
+  } catch {
+    storage = createMemoryStorage()
+    persistent = false
+  }
+  let settings = await storage.getSettings()
+  let categories = await storage.getAll('categories')
+  // nomes padrão antigos (Eu/Esposa) viram os nomes de vocês, desde que ainda não tenham sido trocados
+  if (settings && settings.pessoas.length === 2 && settings.pessoas[0].nome === 'Eu' && settings.pessoas[1].nome === 'Esposa') {
+    settings = { ...settings, pessoas: [{ ...settings.pessoas[0], nome: 'Matheus' }, { ...settings.pessoas[1], nome: 'Gabi' }] }
+    await storage.saveSettings(settings)
+  }
+  if (!settings) {
+    settings = defaultSettings()
+    await storage.saveSettings(settings)
+    categories = seedCategories(nowISO(), newId)
+    await storage.putMany('categories', categories) // só na primeira execução
+  }
+  let [bills, transactions] = await Promise.all([storage.getAll('bills'), storage.getAll('transactions')])
+  const goals = await storage.getAll('goals')
+  const rules = await storage.getAll('rules')
+
+  // une categorias repetidas e religa tudo que usava as duplicadas
+  const usage = new Map<string, number>()
+  for (const x of [...bills, ...transactions]) usage.set(x.categoriaId, (usage.get(x.categoriaId) ?? 0) + 1)
+  const { keep, remap } = dedupeCategories(categories, usage)
+  if (remap.size > 0) {
+    bills = bills.map((b) => (remap.has(b.categoriaId) ? { ...b, categoriaId: remap.get(b.categoriaId)! } : b))
+    transactions = transactions.map((t) => (remap.has(t.categoriaId) ? { ...t, categoriaId: remap.get(t.categoriaId)! } : t))
+    await storage.putMany('bills', bills)
+    await storage.putMany('transactions', transactions)
+    for (const id of remap.keys()) await storage.remove('categories', id)
+    categories = keep
+  }
+  return { storage, persistent, settings, categories, bills, transactions, goals, rules }
+}
+
 export interface AppData {
   ready: boolean
   /** false se o navegador bloqueou o IndexedDB (ex.: aba anônima): os dados somem ao fechar. */
@@ -42,6 +97,8 @@ export interface AppData {
   removeTransaction(id: string): Promise<void>
   saveBill(b: Bill): Promise<void>
   removeBill(id: string): Promise<void>
+  /** Exclui esta conta e as parcelas pendentes seguintes da mesma série. */
+  removeBillAndNext(id: string): Promise<void>
   pay(id: string): Promise<void>
   unpay(id: string): Promise<void>
   saveGoal(g: Goal): Promise<void>
@@ -79,35 +136,24 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
   const live = useRef({ settings, bills, transactions, categories })
   live.current = { settings, bills, transactions, categories }
 
+  // O carregamento inicial é uma promessa única: o modo de desenvolvimento do React roda o efeito duas vezes,
+  // e duas execuções simultâneas criariam as categorias em dobro.
+  const loading = useRef<Promise<Loaded> | null>(null)
   useEffect(() => {
     let alive = true
-    ;(async () => {
-      let storage: Storage
-      try {
-        storage = injected ?? (await createIndexedDBStorage())
-      } catch {
-        storage = createMemoryStorage()
-        setPersistent(false)
-      }
-      st.current = storage
-      let s = await storage.getSettings()
-      let cats = await storage.getAll('categories')
-      if (!s) {
-        s = defaultSettings()
-        await storage.saveSettings(s)
-        cats = seedCategories(nowISO(), newId)
-        await storage.putMany('categories', cats) // só na primeira execução
-      }
-      const [b, t, g, r] = await Promise.all([storage.getAll('bills'), storage.getAll('transactions'), storage.getAll('goals'), storage.getAll('rules')])
+    loading.current ??= loadAll(injected)
+    void loading.current.then((r) => {
       if (!alive) return
-      setSettings(s)
-      setCategories(byOrder(cats))
-      setBills(b)
-      setTransactions(t)
-      setGoals(g)
-      setRules(r)
+      st.current = r.storage
+      setPersistent(r.persistent)
+      setSettings(r.settings)
+      setCategories(byOrder(r.categories))
+      setBills(r.bills)
+      setTransactions(r.transactions)
+      setGoals(r.goals)
+      setRules(r.rules)
       setReady(true)
-    })()
+    })
     return () => {
       alive = false
     }
@@ -175,8 +221,10 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
   )
 
   const saveBill = useCallback(async (b: Bill) => {
-    await st.current!.put('bills', b)
-    setBills((l) => upsert(l, b))
+    const { add, removeIds } = reconcileSeries(b, live.current.bills, { now: nowISO(), newId })
+    await st.current!.putMany('bills', [b, ...add])
+    for (const id of removeIds) await st.current!.remove('bills', id)
+    setBills((l) => [...l.filter((x) => !removeIds.includes(x.id)).map((x) => (x.id === b.id ? b : x)), ...(l.some((x) => x.id === b.id) ? [] : [b]), ...add])
   }, [])
 
   const unpay = useCallback(async (id: string) => {
@@ -193,7 +241,7 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
   const pay = useCallback(async (id: string) => {
     const bill = live.current.bills.find((b) => b.id === id)
     if (!bill || bill.status === 'paga') return
-    const r = payBill(bill, { now: nowISO(), today: todayISO(), perUSD: live.current.settings.rates.perUSD, newId })
+    const r = payBill(bill, { now: nowISO(), today: todayISO(), perUSD: live.current.settings.rates.perUSD, newId, series: live.current.bills })
     await st.current!.putMany('bills', r.next ? [r.bill, r.next] : [r.bill])
     await st.current!.put('transactions', r.transaction)
     setBills((l) => (r.next ? upsert(upsert(l, r.bill), r.next) : upsert(l, r.bill)))
@@ -215,6 +263,14 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
   const removeBill = useCallback(async (id: string) => {
     await st.current!.remove('bills', id)
     setBills((l) => l.filter((b) => b.id !== id))
+  }, [])
+
+  const removeBillAndNext = useCallback(async (id: string) => {
+    const bill = live.current.bills.find((b) => b.id === id)
+    if (!bill) return
+    const gone = new Set(live.current.bills.filter((b) => b.serieId === bill.serieId && b.status === 'pendente' && b.vencimento >= bill.vencimento).map((b) => b.id))
+    for (const g of gone) await st.current!.remove('bills', g)
+    setBills((l) => l.filter((b) => !gone.has(b.id)))
   }, [])
 
   const saveGoal = useCallback(async (g: Goal) => {
@@ -264,7 +320,7 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
 
   const value: AppData = {
     ready, persistent, settings, categories, bills, transactions, goals, rules, ratesStatus,
-    saveTransaction, removeTransaction, saveBill, removeBill, pay, unpay, saveGoal, removeGoal, saveCategory, removeCategory, updateSettings, refreshRates, fixRate, exportData, importData,
+    saveTransaction, removeTransaction, saveBill, removeBill, removeBillAndNext, pay, unpay, saveGoal, removeGoal, saveCategory, removeCategory, updateSettings, refreshRates, fixRate, exportData, importData,
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

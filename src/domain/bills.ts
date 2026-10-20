@@ -1,5 +1,5 @@
 import { diffDays } from './dates'
-import { nextDue } from './recurrence'
+import { nextDue, occurrences } from './recurrence'
 import type { Bill, ISODate, PerUSD, Transaction } from './types'
 
 export type BillState = 'paga' | 'vencida' | 'semana' | 'futura'
@@ -28,6 +28,8 @@ interface PayDeps {
   today: ISODate
   perUSD: PerUSD
   newId: () => string
+  /** Todas as contas: evita criar a próxima ocorrência se ela já existe (série com fim é criada de uma vez). */
+  series?: Bill[]
 }
 
 export interface PayResult {
@@ -40,7 +42,7 @@ export interface PayResult {
  * Marca como paga: gera o lançamento de saída (para o gasto entrar no saldo e no gráfico)
  * e, se recorrente, a próxima ocorrência pendente.
  */
-export function payBill(bill: Bill, { now, today, perUSD, newId }: PayDeps): PayResult {
+export function payBill(bill: Bill, { now, today, perUSD, newId, series = [] }: PayDeps): PayResult {
   if (bill.status === 'paga') throw new Error('Conta já está paga')
   const transaction: Transaction = {
     id: newId(),
@@ -56,9 +58,10 @@ export function payBill(bill: Bill, { now, today, perUSD, newId }: PayDeps): Pay
     contaId: bill.id,
     cambio: perUSD,
   }
-  const due = nextDue(bill.vencimento, bill.recorrencia, bill.diaAncora)
-  const next: Bill | undefined = due
-    ? { ...bill, id: newId(), createdAt: now, updatedAt: now, vencimento: due, status: 'pendente', pagaEm: undefined, transacaoId: undefined, proximaId: undefined }
+  const raw = nextDue(bill.vencimento, bill.recorrencia, bill.diaAncora)
+  const exists = raw !== null && series.some((b) => b.serieId === bill.serieId && b.vencimento === raw)
+  const due = raw !== null && (!bill.fim || raw <= bill.fim) && !exists ? raw : null
+  const next: Bill | undefined = due    ? { ...bill, id: newId(), createdAt: now, updatedAt: now, vencimento: due, status: 'pendente', pagaEm: undefined, transacaoId: undefined, proximaId: undefined }
     : undefined
   const paid: Bill = { ...bill, status: 'paga', pagaEm: today, transacaoId: transaction.id, proximaId: next?.id, updatedAt: now }
   return { bill: paid, transaction, next }
@@ -78,4 +81,19 @@ export function unpayBill(bill: Bill, all: Bill[], now: string): UnpayResult {
     removeTransactionId: bill.transacaoId,
     removeBillId: next && next.status === 'pendente' ? next.id : undefined,
   }
+}
+
+/**
+ * Uma conta com "repetir até" gera todas as parcelas de uma vez (para cada mês mostrar o que falta pagar).
+ * Chamada ao criar e ao editar: acrescenta as que faltam e apaga as pendentes que ficaram depois do novo fim.
+ */
+export function reconcileSeries(bill: Bill, all: Bill[], { now, newId }: { now: string; newId: () => string }): { add: Bill[]; removeIds: string[] } {
+  if (bill.recorrencia === 'unica' || !bill.fim) return { add: [], removeIds: [] }
+  const others = all.filter((b) => b.serieId === bill.serieId && b.id !== bill.id)
+  const have = new Set([bill.vencimento, ...others.map((b) => b.vencimento)])
+  const add = occurrences(bill.vencimento, bill.recorrencia, bill.diaAncora, bill.fim)
+    .filter((d) => !have.has(d))
+    .map((d): Bill => ({ ...bill, id: newId(), createdAt: now, updatedAt: now, vencimento: d, status: 'pendente', pagaEm: undefined, transacaoId: undefined, proximaId: undefined }))
+  const removeIds = others.filter((b) => b.status === 'pendente' && b.vencimento > bill.fim!).map((b) => b.id)
+  return { add, removeIds }
 }

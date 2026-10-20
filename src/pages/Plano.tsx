@@ -124,7 +124,7 @@ function GoalSheet({ goal, defaultPessoa, onClose }: { goal: Goal | null; defaul
   }
 
   return (
-    <Sheet title={goal ? 'Editar meta' : 'Nova meta'} onClose={onClose} onSubmit={save} canSubmit={valid} danger={goal ? { label: 'Excluir', onClick: async () => { await removeGoal(goal.id); onClose() } } : undefined}>
+    <Sheet title={goal ? 'Editar meta' : 'Nova meta'} onClose={onClose} onSubmit={save} canSubmit={valid} danger={goal ? [{ label: 'Excluir', onClick: async () => { await removeGoal(goal.id); onClose() } }] : undefined}>
       <Field label="Nome da meta">
         <input autoFocus={!goal} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Mudança para a Europa" className={inputCls} />
       </Field>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { billState, sortBills } from '../domain/bills'
-import { diffDays, todayISO, toBR } from '../domain/dates'
+import { clampedDate, diffDays, todayISO, toBR } from '../domain/dates'
+import { occurrences } from '../domain/recurrence'
 import { centsToInput, convert, formatMoney, parseAmount } from '../domain/money'
 import type { Bill, Currency, PersonId, Recurrence } from '../domain/types'
 import { newId, nowISO, useApp } from '../state/data'
@@ -9,6 +10,9 @@ import { Card, Screen } from '../ui/Screen'
 import { Fab, Sheet } from '../ui/Sheet'
 
 const REC_LABEL: Record<Recurrence, string> = { unica: 'Única', mensal: 'Mensal', anual: 'Anual' }
+
+/** Parcelas ainda pendentes da mesma conta (incluindo esta). */
+const remaining = (bills: Bill[], b: Bill) => bills.filter((x) => x.serieId === b.serieId && x.status === 'pendente').length
 
 function dueText(b: Bill, today: string): { text: string; cls: string } {
   if (b.status === 'paga') return { text: `Paga em ${toBR(b.pagaEm!)}`, cls: 'text-muted' }
@@ -62,6 +66,11 @@ export default function Contas({ pessoa, onPessoa }: { pessoa: PersonId | 'todos
                     <span className="block truncate text-xs text-muted">
                       {cat?.nome ?? '—'} · {REC_LABEL[b.recorrencia]} · {personName(settings, b.pessoa)}
                     </span>
+                    {b.fim && !paid && (
+                      <span className="block truncate text-xs text-muted">
+                        Até {toBR(b.fim).slice(3)} · {remaining(bills, b)} {remaining(bills, b) === 1 ? 'restante' : 'restantes'}
+                      </span>
+                    )}
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="num block text-sm font-semibold">{formatMoney(b.valorCents, b.moeda)}</span>
@@ -81,7 +90,7 @@ export default function Contas({ pessoa, onPessoa }: { pessoa: PersonId | 'todos
 }
 
 function BillSheet({ bill, defaultPessoa, onClose }: { bill: Bill | null; defaultPessoa: PersonId; onClose: () => void }) {
-  const { categories, settings, saveBill, removeBill } = useApp()
+  const { categories, settings, bills, saveBill, removeBill, removeBillAndNext } = useApp()
   const [descricao, setDescricao] = useState(bill?.descricao ?? '')
   const [amount, setAmount] = useState(bill ? centsToInput(bill.valorCents) : '')
   const [moeda, setMoeda] = useState<Currency>(bill?.moeda ?? settings.moedaExibicao)
@@ -89,9 +98,14 @@ function BillSheet({ bill, defaultPessoa, onClose }: { bill: Bill | null; defaul
   const [categoriaId, setCategoriaId] = useState(bill?.categoriaId ?? categories[0]?.id ?? '')
   const [pessoa, setPessoa] = useState<PersonId>(bill?.pessoa ?? defaultPessoa)
   const [recorrencia, setRecorrencia] = useState<Recurrence>(bill?.recorrencia ?? 'mensal')
+  const [fimMes, setFimMes] = useState(bill?.fim?.slice(0, 7) ?? '') // 'YYYY-MM' ou vazio = sem fim
   const cents = parseAmount(amount)
   const paid = bill?.status === 'paga'
-  const valid = descricao.trim().length > 0 && cents !== null && cents > 0 && !!vencimento && !!categoriaId
+  const dia = Number(vencimento.slice(8, 10))
+  const fim = recorrencia !== 'unica' && fimMes ? clampedDate(fimMes, dia) : undefined
+  const fimOk = !fim || fim >= vencimento
+  const parcelas = fim && fimOk ? occurrences(vencimento, recorrencia, dia, fim).length : 0
+  const valid = descricao.trim().length > 0 && cents !== null && cents > 0 && !!vencimento && !!categoriaId && fimOk
 
   const save = async () => {
     const now = nowISO()
@@ -107,6 +121,7 @@ function BillSheet({ bill, defaultPessoa, onClose }: { bill: Bill | null; defaul
       categoriaId,
       pessoa,
       recorrencia,
+      fim,
       updatedAt: now,
     })
     onClose()
@@ -118,7 +133,14 @@ function BillSheet({ bill, defaultPessoa, onClose }: { bill: Bill | null; defaul
       onClose={onClose}
       onSubmit={save}
       canSubmit={valid}
-      danger={bill && !paid ? { label: 'Excluir', onClick: async () => { await removeBill(bill.id); onClose() } } : undefined}
+      danger={
+        bill && !paid
+          ? [
+              { label: 'Excluir', onClick: async () => { await removeBill(bill.id); onClose() } },
+              ...(bill.fim && remaining(bills, bill) > 1 ? [{ label: 'Excluir esta e as próximas', onClick: async () => { await removeBillAndNext(bill.id); onClose() } }] : []),
+            ]
+          : undefined
+      }
     >
       <Field label="Descrição">
         <input autoFocus={!bill} value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: Aluguel" className={inputCls} />
@@ -145,6 +167,23 @@ function BillSheet({ bill, defaultPessoa, onClose }: { bill: Bill | null; defaul
       <Field label="Repetição">
         <Segmented label="Repetição" value={recorrencia} onChange={setRecorrencia} options={[{ value: 'unica', label: 'Única' }, { value: 'mensal', label: 'Mensal' }, { value: 'anual', label: 'Anual' }]} />
       </Field>
+      {recorrencia !== 'unica' && (
+        <Field label="Repetir até (opcional)">
+          <input type="month" value={fimMes} min={vencimento.slice(0, 7)} onChange={(e) => setFimMes(e.target.value)} className={inputCls} />
+        </Field>
+      )}
+      {recorrencia !== 'unica' && (
+        <p className={`text-xs ${fimOk ? 'text-muted' : 'text-bad'}`}>
+          {!fimOk
+            ? 'O mês final não pode ser antes do primeiro vencimento.'
+            : fim
+              ? bill
+                ? `Termina em ${toBR(fim).slice(3)}. As parcelas que faltarem até lá serão criadas; as que passarem desse mês, removidas.`
+                : `Serão criadas ${parcelas} ${parcelas === 1 ? 'parcela' : 'parcelas'}, de ${toBR(vencimento)} até ${toBR(fim)}.`
+              : 'Sem data final: repete para sempre. Para as últimas parcelas de uma conta, escolha o mês da última.'}
+        </p>
+      )}
+      {bill && bill.fim && <p className="text-xs text-muted">Mudar o valor ou a categoria vale só para esta parcela.</p>}
       {paid && <p className="text-xs text-muted">Conta paga: para excluir, desfaça o pagamento antes.</p>}
     </Sheet>
   )

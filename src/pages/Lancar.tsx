@@ -109,7 +109,7 @@ function TransactionSheet({ tx, defaultPessoa, onClose }: { tx: Transaction | nu
       onClose={onClose}
       onSubmit={save}
       canSubmit={valid}
-      danger={tx ? { label: tx.contaId ? 'Desfazer pagamento' : 'Excluir', onClick: async () => { await removeTransaction(tx.id); onClose() } } : undefined}
+      danger={tx ? [{ label: tx.contaId ? 'Desfazer pagamento' : 'Excluir', onClick: async () => { await removeTransaction(tx.id); onClose() } }] : undefined}
     >
       <Segmented
         label="Tipo"

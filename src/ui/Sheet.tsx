@@ -8,7 +8,7 @@ interface Props {
   canSubmit?: boolean
   children: ReactNode
   /** Ação destrutiva opcional (ex.: Excluir). */
-  danger?: { label: string; onClick: () => void }
+  danger?: { label: string; onClick: () => void }[]
 }
 
 /** Painel que sobe de baixo: o formulário padrão de cadastro e edição. */
@@ -29,11 +29,11 @@ export function Sheet({ title, onClose, onSubmit, submitLabel = 'Salvar', canSub
         <h2 className="font-semibold">{title}</h2>
         {children}
         <div className="flex items-center gap-2 pt-1">
-          {danger && (
-            <button type="button" onClick={danger.onClick} className="rounded-lg px-3 py-3 text-sm font-medium text-bad">
-              {danger.label}
+          {danger?.map((d) => (
+            <button key={d.label} type="button" onClick={d.onClick} className="rounded-lg px-2 py-3 text-sm font-medium text-bad">
+              {d.label}
             </button>
-          )}
+          ))}
           <button type="button" onClick={onClose} className="ml-auto rounded-lg px-4 py-3 text-sm text-muted">
             Cancelar
           </button>

@@ -1,11 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { diffDays, todayISO, toBR } from '../domain/dates'
 import { formatMoney } from '../domain/money'
 import { summarizeMonth } from '../domain/month'
 import { pairRate, isStale } from '../domain/rates'
 import { CURRENCIES, type PersonId } from '../domain/types'
 import { useApp } from '../state/data'
-import { PersonFilter } from '../ui/fields'
+import { PersonFilter, Segmented } from '../ui/fields'
+import Dizimo from './Dizimo'
 import { MonthNav } from '../ui/MonthNav'
 import { Card, Screen } from '../ui/Screen'
 
@@ -18,6 +19,7 @@ interface Props {
 
 export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
   const { transactions, bills, categories, settings, ratesStatus, refreshRates } = useApp()
+  const [aba, setAba] = useState<'resumo' | 'dizimo'>('resumo')
   const display = settings.moedaExibicao
   const s = useMemo(
     () => summarizeMonth({ mes, transactions, bills, rates: settings.rates.perUSD, moeda: display, pessoa }),
@@ -32,6 +34,12 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
     <Screen title="Visão do mês" subtitle="Quanto entrou, saiu e falta pagar">
       <MonthNav mes={mes} onChange={onMes} />
       <PersonFilter settings={settings} value={pessoa} onChange={onPessoa} />
+      <Segmented label="Painel" value={aba} onChange={setAba} options={[{ value: 'resumo', label: 'Resumo' }, { value: 'dizimo', label: 'Dízimo' }]} />
+
+      {aba === 'dizimo' ? (
+        <Dizimo mes={mes} pessoa={pessoa} />
+      ) : (
+        <>
 
       <Card className="space-y-1">
         <p className="text-xs font-medium text-muted">Saldo do mês</p>
@@ -84,6 +92,9 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
           </Card>
         )}
       </section>
+
+        </>
+      )}
 
       <div className="flex items-center justify-between gap-2 text-xs text-muted">
         <span className="num">

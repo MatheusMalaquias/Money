@@ -1,4 +1,5 @@
-import type { Transaction } from './types'
+import { convert } from './money'
+import type { Currency, PersonId, Transaction } from './types'
 
 export const DEFAULT_TITHE_BPS = 1000 // 10%
 
@@ -30,4 +31,35 @@ export function buildTithe(income: Transaction, { now, newId, categoriaId, bps, 
     dizimoDeId: income.id,
     cambio: income.cambio,
   }
+}
+
+export interface TitheSummary {
+  /** Dízimo do mês, na moeda de exibição. */
+  total: number
+  /** Entradas do mês sobre as quais o dízimo foi calculado. */
+  base: number
+  /** Dízimo do ano inteiro do mês escolhido. */
+  ano: number
+  porPessoa: { pessoa: PersonId; total: number }[]
+  /** Valores originais, sem conversão. */
+  porMoeda: Record<Currency, number>
+  itens: Transaction[]
+}
+
+/** Resumo do dízimo de um mês, do ano e por pessoa. Usa o câmbio guardado em cada lançamento. */
+export function summarizeTithe({ mes, transactions, moeda, pessoa }: { mes: string; transactions: Transaction[]; moeda: Currency; pessoa: PersonId | 'todos' }): TitheSummary {
+  const match = (p: PersonId) => pessoa === 'todos' || p === pessoa
+  const conv = (t: Transaction) => convert(t.valorCents, t.moeda, moeda, t.cambio)
+  const itens = transactions.filter((t) => t.dizimoDeId && t.data.slice(0, 7) === mes && match(t.pessoa)).sort((a, b) => b.data.localeCompare(a.data))
+  const porPessoa = new Map<PersonId, number>()
+  const porMoeda: Record<Currency, number> = { BRL: 0, USD: 0, EUR: 0 }
+  let total = 0
+  for (const t of itens) {
+    total += conv(t)
+    porMoeda[t.moeda] += t.valorCents
+    porPessoa.set(t.pessoa, (porPessoa.get(t.pessoa) ?? 0) + conv(t))
+  }
+  const base = transactions.filter((t) => t.tipo === 'entrada' && t.dizimo && t.data.slice(0, 7) === mes && match(t.pessoa)).reduce((s, t) => s + conv(t), 0)
+  const ano = transactions.filter((t) => t.dizimoDeId && t.data.slice(0, 4) === mes.slice(0, 4) && match(t.pessoa)).reduce((s, t) => s + conv(t), 0)
+  return { total, base, ano, porPessoa: [...porPessoa].map(([p, t]) => ({ pessoa: p, total: t })), porMoeda, itens }
 }
