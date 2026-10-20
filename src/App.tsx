@@ -5,7 +5,7 @@ import Config from './pages/Config'
 import Contas from './pages/Contas'
 import Lancar from './pages/Lancar'
 import Mes from './pages/Mes'
-import Placeholder from './pages/Placeholder'
+import Plano from './pages/Plano'
 import { DataProvider, useApp } from './state/data'
 import { useTheme } from './theme'
 import { IconBills, IconGear, IconMonth, IconPlan, IconSwap } from './ui/Icons'
@@ -46,7 +46,7 @@ function Shell() {
             {tab === 'mes' && <Mes mes={mes} onMes={setMes} pessoa={pessoa} onPessoa={setPessoa} />}
             {tab === 'contas' && <Contas pessoa={pessoa} onPessoa={setPessoa} />}
             {tab === 'lancar' && <Lancar mes={mes} onMes={setMes} pessoa={pessoa} onPessoa={setPessoa} />}
-            {tab === 'plano' && <Placeholder title="Plano e metas" next="Regras de distribuição da renda e metas, incluindo a mudança para a Europa." />}
+            {tab === 'plano' && <Plano pessoa={pessoa} onPessoa={setPessoa} />}
             {tab === 'ajustes' && <Config theme={theme} onTheme={setTheme} />}
           </>
         )}

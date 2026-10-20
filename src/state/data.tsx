@@ -35,6 +35,8 @@ export interface AppData {
   removeBill(id: string): Promise<void>
   pay(id: string): Promise<void>
   unpay(id: string): Promise<void>
+  saveGoal(g: Goal): Promise<void>
+  removeGoal(id: string): Promise<void>
   saveCategory(c: Category): Promise<void>
   removeCategory(id: string): Promise<void>
   updateSettings(patch: Partial<Settings>): Promise<void>
@@ -168,6 +170,16 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
     setBills((l) => l.filter((b) => b.id !== id))
   }, [])
 
+  const saveGoal = useCallback(async (g: Goal) => {
+    await st.current!.put('goals', g)
+    setGoals((l) => upsert(l, g))
+  }, [])
+
+  const removeGoal = useCallback(async (id: string) => {
+    await st.current!.remove('goals', id)
+    setGoals((l) => l.filter((g) => g.id !== id))
+  }, [])
+
   const saveCategory = useCallback(async (c: Category) => {
     await st.current!.put('categories', c)
     setCategories((l) => byOrder(upsert(l, c)))
@@ -190,7 +202,7 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
 
   const value: AppData = {
     ready, persistent, settings, categories, bills, transactions, goals, rules, ratesStatus,
-    saveTransaction, removeTransaction, saveBill, removeBill, pay, unpay, saveCategory, removeCategory, updateSettings, refreshRates, fixRate,
+    saveTransaction, removeTransaction, saveBill, removeBill, pay, unpay, saveGoal, removeGoal, saveCategory, removeCategory, updateSettings, refreshRates, fixRate,
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
