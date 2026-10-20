@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { monthKey, todayISO, toBR } from '../domain/dates'
 import { centsToInput, convert, formatMoney, parseAmount } from '../domain/money'
+import { DEFAULT_TITHE_BPS, titheAmount } from '../domain/tithe'
 import { type Currency, type PersonId, type Transaction } from '../domain/types'
 import { newId, nowISO, useApp } from '../state/data'
 import { AmountInput, ConversionHint, Field, PersonFilter, Segmented, inputCls, peopleOptions, personName } from '../ui/fields'
@@ -39,7 +40,7 @@ export default function Lancar({ mes, onMes, pessoa, onPessoa }: Props) {
             const entrada = t.tipo === 'entrada'
             return (
               <li key={t.id}>
-                <button onClick={() => setEditing(t)} className="flex w-full items-center gap-3 rounded-xl border border-line bg-card px-3.5 py-3 text-left">
+                <button onClick={() => setEditing(t.dizimoDeId ? transactions.find((x) => x.id === t.dizimoDeId) ?? t : t)} className="flex w-full items-center gap-3 rounded-xl border border-line bg-card px-3.5 py-3 text-left">
                   <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ background: c?.cor ?? '#94a3b8' }} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{t.descricao || c?.nome || 'Sem descrição'}</span>
@@ -77,6 +78,9 @@ function TransactionSheet({ tx, defaultPessoa, onClose }: { tx: Transaction | nu
   const [categoriaId, setCategoriaId] = useState(tx?.categoriaId ?? categories[0]?.id ?? '')
   const [pessoa, setPessoa] = useState<PersonId>(tx?.pessoa ?? defaultPessoa)
   const [descricao, setDescricao] = useState(tx?.descricao ?? '')
+  // entrada nova já nasce com dízimo; entradas antigas (sem o campo) ficam como estavam
+  const [dizimo, setDizimo] = useState(tx ? !!tx.dizimo : true)
+  const bps = settings.dizimoBps ?? DEFAULT_TITHE_BPS
   const cents = parseAmount(amount)
   const valid = cents !== null && cents > 0 && !!data && !!categoriaId
 
@@ -91,6 +95,7 @@ function TransactionSheet({ tx, defaultPessoa, onClose }: { tx: Transaction | nu
       categoriaId,
       pessoa,
       descricao: descricao.trim(),
+      dizimo: tipo === 'entrada' ? dizimo : undefined,
       updatedAt: now,
       // novo lançamento fixa o câmbio do dia; ao editar, só refixa se a moeda ou o valor mudaram de moeda
       cambio: tx && tx.moeda === moeda ? tx.cambio : settings.rates.perUSD,
@@ -134,6 +139,15 @@ function TransactionSheet({ tx, defaultPessoa, onClose }: { tx: Transaction | nu
           {categories.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
         </select>
       </Field>
+      {tipo === 'entrada' && bps > 0 && (
+        <label className="flex items-center gap-3 rounded-lg bg-raised px-3 py-2.5 text-sm">
+          <input type="checkbox" checked={dizimo} onChange={(e) => setDizimo(e.target.checked)} className="h-5 w-5 accent-[rgb(var(--accent))]" />
+          <span className="flex-1">
+            Descontar dízimo ({bps / 100}%)
+            {cents !== null && dizimo && <span className="num block text-xs text-muted">{formatMoney(titheAmount(cents, bps), moeda)} saem como despesa</span>}
+          </span>
+        </label>
+      )}
       {tx?.contaId && <p className="text-xs text-muted">Gerado ao pagar uma conta. Excluir desfaz o pagamento.</p>}
     </Sheet>
   )

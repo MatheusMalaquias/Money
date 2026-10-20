@@ -7,6 +7,8 @@ export interface MonthSummary {
   saidas: number
   saldo: number
   faltaPagar: number
+  /** Parte das saídas que é dízimo. */
+  dizimo: number
   porCategoria: { categoriaId: string; total: number }[]
   /** Valores originais, sem conversão: o que realmente entrou/saiu em cada moeda. */
   porMoeda: Record<Currency, { entradas: number; saidas: number; faltaPagar: number }>
@@ -37,6 +39,7 @@ export function summarizeMonth({ mes, transactions, bills, rates, moeda, pessoa 
   let entradas = 0
   let saidas = 0
   let faltaPagar = 0
+  let dizimo = 0
 
   for (const t of transactions) {
     if (monthKey(t.data) !== mes || !match(t.pessoa)) continue
@@ -46,6 +49,7 @@ export function summarizeMonth({ mes, transactions, bills, rates, moeda, pessoa 
       porMoeda[t.moeda].entradas += t.valorCents
     } else {
       saidas += v
+      if (t.dizimoDeId) dizimo += v
       porMoeda[t.moeda].saidas += t.valorCents
       cats.set(t.categoriaId, (cats.get(t.categoriaId) ?? 0) + v)
     }
@@ -61,6 +65,7 @@ export function summarizeMonth({ mes, transactions, bills, rates, moeda, pessoa 
     saidas,
     saldo: entradas - saidas,
     faltaPagar,
+    dizimo,
     porCategoria: [...cats].map(([categoriaId, total]) => ({ categoriaId, total })).sort((a, b) => b.total - a.total),
     porMoeda,
   }

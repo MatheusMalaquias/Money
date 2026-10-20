@@ -41,6 +41,7 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
       <Card className="divide-y divide-line py-1">
         <Row label="Entradas" value={formatMoney(s.entradas, display)} cls="text-good" />
         <Row label="Saídas" value={formatMoney(s.saidas, display)} />
+        {s.dizimo > 0 && <Row label="· dos quais dízimo" value={formatMoney(s.dizimo, display)} cls="text-muted !text-sm !font-medium" />}
         <Row label="Falta pagar no mês" value={formatMoney(s.faltaPagar, display)} cls={s.faltaPagar > 0 ? 'text-warn' : ''} />
       </Card>
 

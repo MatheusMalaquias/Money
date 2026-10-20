@@ -44,6 +44,7 @@ export default function Config({ theme, onTheme }: { theme: ThemePref; onTheme: 
         ))}
       </Card>
 
+      <TitheCard />
       <RatesCard />
       <CategoriesCard />
       <BackupCard />
@@ -55,6 +56,27 @@ export default function Config({ theme, onTheme }: { theme: ThemePref; onTheme: 
 function NameField({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [v, setV] = useState(value)
   return <input value={v} onChange={(e) => setV(e.target.value)} onBlur={() => (v.trim() ? v.trim() !== value && onSave(v.trim()) : setV(value))} className={inputCls} aria-label="Nome" />
+}
+
+function TitheCard() {
+  const { settings, updateSettings } = useApp()
+  const bps = settings.dizimoBps ?? 1000
+  const [text, setText] = useState(String(bps / 100).replace('.', ','))
+  const commit = () => {
+    const n = Number(text.replace(',', '.'))
+    if (Number.isFinite(n) && n >= 0 && n <= 100) void updateSettings({ dizimoBps: Math.round(n * 100) })
+    else setText(String(bps / 100).replace('.', ','))
+  }
+  return (
+    <Card className="space-y-3">
+      <h2 className={h2}>Dízimo</h2>
+      <div className="flex items-center gap-2">
+        <input inputMode="decimal" value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} aria-label="Percentual do dízimo" className={`${inputCls} num`} />
+        <span className="text-sm text-muted">% das entradas</span>
+      </div>
+      <p className="text-xs text-muted">Cada entrada lançada gera sozinha uma saída "Dízimo" com esse percentual (dá para desmarcar em cada entrada). Mudar o percentual vale para as próximas entradas e para as que você editar. Use 0 para desligar.</p>
+    </Card>
+  )
 }
 
 function RatesCard() {
@@ -123,7 +145,7 @@ function CategoriesCard() {
       await removeCategory(c.id)
       setErro('')
     } catch {
-      setErro(`"${c.nome}" está em uso por contas ou lançamentos. Renomeie em vez de excluir.`)
+      setErro(c.chave ? `"${c.nome}" é usada pelo dízimo automático e não pode ser excluída. Você pode renomeá-la.` : `"${c.nome}" está em uso por contas ou lançamentos. Renomeie em vez de excluir.`)
     }
   }
   return (

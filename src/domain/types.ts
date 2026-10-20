@@ -21,6 +21,8 @@ export interface Category extends Base {
   nome: string
   cor: string
   ordem: number
+  /** Categoria que o app usa por conta própria (ex.: 'dizimo'): se o usuário renomear, o app ainda a encontra. */
+  chave?: 'dizimo'
 }
 
 export type Recurrence = 'unica' | 'mensal' | 'anual'
@@ -53,6 +55,10 @@ export interface Transaction extends Base {
   descricao: string
   pessoa: PersonId
   contaId?: string
+  /** Entrada: descontar o dízimo deste valor. */
+  dizimo?: boolean
+  /** Saída gerada automaticamente: id da entrada que originou este dízimo. */
+  dizimoDeId?: string
   /** Câmbio no momento do lançamento: o mês passado não muda quando a cotação muda. */
   cambio: PerUSD
 }
@@ -83,6 +89,8 @@ export interface RatesState {
 
 export interface Settings {
   moedaExibicao: Currency
+  /** Dízimo sobre as entradas, em pontos-base (1000 = 10%). 0 desliga. */
+  dizimoBps: number
   pessoas: { id: PersonId; nome: string }[]
   rates: RatesState
   schemaVersion: number

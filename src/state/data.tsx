@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { payBill, unpayBill } from '../domain/bills'
 import { todayISO, diffDays } from '../domain/dates'
 import { defaultSettings, seedCategories } from '../domain/defaults'
+import { buildTithe, DEFAULT_TITHE_BPS, titheAmount } from '../domain/tithe'
 import { isStale, mergeFetched, setManual } from '../domain/rates'
 import type { Bill, Category, Currency, Goal, PlanRule, Settings, Transaction } from '../domain/types'
 import { fetchRates } from '../services/fx'
@@ -75,8 +76,8 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
   const [ratesStatus, setRatesStatus] = useState<AppData['ratesStatus']>('idle')
 
   // espelho do estado mais recente: as ações são assíncronas e não podem ler valores "velhos" do render
-  const live = useRef({ settings, bills, transactions })
-  live.current = { settings, bills, transactions }
+  const live = useRef({ settings, bills, transactions, categories })
+  live.current = { settings, bills, transactions, categories }
 
   useEffect(() => {
     let alive = true
@@ -135,10 +136,43 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
     if (ready && isStale(live.current.settings.rates, todayISO(), diffDays) && navigator.onLine) void refreshRates()
   }, [ready, refreshRates])
 
-  const saveTransaction = useCallback(async (t: Transaction) => {
-    await st.current!.put('transactions', t)
-    setTransactions((l) => upsert(l, t))
+  /** Acha a categoria Dízimo (mesmo renomeada) ou cria, para bases criadas antes dela existir. */
+  const ensureTitheCategory = useCallback(async (): Promise<string> => {
+    const found = live.current.categories.find((c) => c.chave === 'dizimo')
+    if (found) return found.id
+    const now = nowISO()
+    const cat: Category = { id: newId(), createdAt: now, updatedAt: now, nome: 'Dízimo', cor: '#a78bfa', ordem: live.current.categories.length, chave: 'dizimo' }
+    await st.current!.put('categories', cat)
+    live.current.categories = [...live.current.categories, cat]
+    setCategories((l) => byOrder(upsert(l, cat)))
+    return cat.id
   }, [])
+
+  /** Mantém a saída de dízimo coerente com a entrada: cria, atualiza ou remove. */
+  const syncTithe = useCallback(
+    async (income: Transaction) => {
+      const existing = live.current.transactions.find((x) => x.dizimoDeId === income.id)
+      const bps = live.current.settings.dizimoBps ?? DEFAULT_TITHE_BPS
+      if (income.dizimo && titheAmount(income.valorCents, bps) > 0) {
+        const d = buildTithe(income, { now: nowISO(), newId, categoriaId: await ensureTitheCategory(), bps, existing })
+        await st.current!.put('transactions', d)
+        setTransactions((l) => upsert(l, d))
+      } else if (existing) {
+        await st.current!.remove('transactions', existing.id)
+        setTransactions((l) => l.filter((x) => x.id !== existing.id))
+      }
+    },
+    [ensureTitheCategory]
+  )
+
+  const saveTransaction = useCallback(
+    async (t: Transaction) => {
+      await st.current!.put('transactions', t)
+      setTransactions((l) => upsert(l, t))
+      if (t.tipo === 'entrada') await syncTithe(t)
+    },
+    [syncTithe]
+  )
 
   const saveBill = useCallback(async (b: Bill) => {
     await st.current!.put('bills', b)
@@ -170,8 +204,10 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
     async (id: string) => {
       const linked = live.current.bills.find((b) => b.transacaoId === id)
       if (linked) return unpay(linked.id) // lançamento gerado por uma conta: excluir = desfazer o pagamento
-      await st.current!.remove('transactions', id)
-      setTransactions((l) => l.filter((t) => t.id !== id))
+      // apagar uma entrada leva junto o dízimo que ela gerou
+      const gone = new Set([id, ...live.current.transactions.filter((x) => x.dizimoDeId === id).map((x) => x.id)])
+      for (const g of gone) await st.current!.remove('transactions', g)
+      setTransactions((l) => l.filter((t) => !gone.has(t.id)))
     },
     [unpay]
   )
@@ -197,6 +233,7 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
   }, [])
 
   const removeCategory = useCallback(async (id: string) => {
+    if (live.current.categories.find((c) => c.id === id)?.chave) throw new Error('Categoria do sistema')
     const used = live.current.bills.some((b) => b.categoriaId === id) || live.current.transactions.some((t) => t.categoriaId === id)
     if (used) throw new Error('Categoria em uso')
     await st.current!.remove('categories', id)
@@ -216,7 +253,7 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
   const importData = useCallback(async (snap: Snapshot) => {
     const settings = snap.settings ?? defaultSettings()
     await st.current!.restore({ ...snap, settings })
-    live.current = { settings, bills: snap.data.bills, transactions: snap.data.transactions }
+    live.current = { settings, bills: snap.data.bills, transactions: snap.data.transactions, categories: snap.data.categories }
     setSettings(settings)
     setCategories(byOrder(snap.data.categories))
     setBills(snap.data.bills)
