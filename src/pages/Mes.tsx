@@ -48,7 +48,7 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
   const pagoNoMes = month.saidas - month.dizimo
   const gastoMedio = useMemo(() => averageMonthlySpend({ transactions, mes, moeda: display, pessoa }), [transactions, mes, display, pessoa])
   const mesesReserva = gastoMedio > 0 ? t.reserva / gastoMedio : null
-  const sobra = t.disponivel - due.total
+  const sobra = t.total - due.total
   const stale = isStale(settings.rates, todayISO(), diffDays)
   const r = pairRate('USD', display, settings.rates.perUSD)
 
@@ -71,7 +71,7 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted">Total que temos{pessoa !== 'todos' ? ` · ${personName(settings, pessoa)}` : ''}</p>
               <p className={`num text-4xl font-bold tracking-tight ${t.total < 0 ? 'text-bad' : 'text-main'}`}>{formatMoney(t.total, display)}</p>
-              <p className="text-xs text-muted">depois do dízimo, somando tudo até o fim de {monthLabel(mes)}</p>
+              <p className="text-xs text-muted">depois do dízimo e do que foi para a reserva, somando tudo até o fim de {monthLabel(mes)}</p>
             </div>
 
             {pessoa === 'todos' && t.porPessoa.length > 1 && (
@@ -97,13 +97,14 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
               <p className="text-xs text-muted">Cobre cerca de {mesesReserva.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} {Math.round(mesesReserva * 10) / 10 === 1 ? 'mês' : 'meses'} de gastos (média de {formatMoney(gastoMedio, display)} por mês).</p>
             )}
             <div className="num flex items-baseline justify-between border-t border-line pt-2 text-sm">
-              <span className="text-muted">Disponível (total − reserva)</span>
-              <span className={`font-semibold ${t.disponivel < 0 ? 'text-bad' : ''}`}>{formatMoney(t.disponivel, display)}</span>
+              <span className="text-muted">Tudo junto (total + reserva)</span>
+              <span className="font-semibold">{formatMoney(t.junto, display)}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setReserving('add')} className="rounded-lg bg-accent py-2.5 text-sm font-semibold text-on-accent">Adicionar valor</button>
-              <button onClick={() => setReserving('in')} className="rounded-lg border border-line py-2.5 text-sm font-medium text-accent">Guardar / tirar</button>
+              <button onClick={() => setReserving('in')} className="rounded-lg bg-accent py-2.5 text-sm font-semibold text-on-accent">Guardar na reserva</button>
+              <button onClick={() => setReserving('out')} className="rounded-lg border border-line py-2.5 text-sm font-medium text-accent">Tirar da reserva</button>
             </div>
+            <button onClick={() => setReserving('add')} className="w-full text-xs text-muted underline">Informar o que a reserva já tinha</button>
           </Card>
 
           <Card className="space-y-2">
@@ -124,7 +125,7 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
               {dueAll.count > due.count && (
                 <div className="flex justify-between text-xs text-muted"><dt>Todas as pendentes, com meses seguintes ({dueAll.count})</dt><dd>{formatMoney(dueAll.total, display)}</dd></div>
               )}
-              <div className="flex justify-between border-t border-line pt-2"><dt className="text-muted">Disponível</dt><dd>{formatMoney(t.disponivel, display)}</dd></div>
+              <div className="flex justify-between border-t border-line pt-2"><dt className="text-muted">Total que temos</dt><dd>{formatMoney(t.total, display)}</dd></div>
               <div className="flex justify-between text-base font-semibold">
                 <dt>Sobra depois do crédito</dt>
                 <dd className={sobra < 0 ? 'text-bad' : 'text-good'}>{formatMoney(sobra, display)}</dd>

@@ -25,16 +25,27 @@ describe('total que temos', () => {
     expect(r.porPessoa).toContainEqual({ pessoa: 'gabi', total: 270_000 })
     expect(r.porPessoa).toContainEqual({ pessoa: 'casal', total: -100_000 })
   })
-  it('reserva separa uma parte do total, sem ser gasto', () => {
+  it('guardar na reserva diminui o total e aumenta a reserva (o conjunto não muda)', () => {
     const r = summarizeTotals({ ...base, transactions: [...txs, t({ id: '6', tipo: 'reserva', valorCents: 500_000 })] })
-    expect(r.total).toBe(1_970_000) // não muda
+    expect(r.total).toBe(1_970_000 - 500_000)
     expect(r.reserva).toBe(500_000)
-    expect(r.disponivel).toBe(1_470_000)
+    expect(r.junto).toBe(1_970_000)
   })
-  it('retirada devolve da reserva ao disponível', () => {
+  it('tirar da reserva devolve ao total', () => {
     const r = summarizeTotals({ ...base, transactions: [...txs, t({ id: '6', tipo: 'reserva', valorCents: 500_000 }), t({ id: '7', tipo: 'reserva', retirada: true, valorCents: 200_000 })] })
     expect(r.reserva).toBe(300_000)
-    expect(r.disponivel).toBe(1_670_000)
+    expect(r.total).toBe(1_970_000 - 300_000)
+  })
+  it('"já tinha" soma só na reserva, sem mexer no total', () => {
+    const sem = summarizeTotals({ ...base, transactions: txs })
+    const r = summarizeTotals({ ...base, transactions: [...txs, t({ id: '8', tipo: 'reserva', aporte: true, valorCents: 1_000_000 })] })
+    expect(r.total).toBe(sem.total)
+    expect(r.reserva).toBe(1_000_000)
+    expect(r.junto).toBe(sem.total + 1_000_000)
+  })
+  it('guardar reduz o total da pessoa que guardou', () => {
+    const r = summarizeTotals({ ...base, transactions: [...txs, t({ id: '6', tipo: 'reserva', valorCents: 100_000, pessoa: 'gabi' })] })
+    expect(r.porPessoa).toContainEqual({ pessoa: 'gabi', total: 270_000 - 100_000 })
   })
   it('acumula meses anteriores e ignora o que é depois', () => {
     const all = [t({ id: 'a', valorCents: 100_000, data: '2026-09-10' }), t({ id: 'b', valorCents: 50_000, data: '2026-10-10' }), t({ id: 'c', valorCents: 70_000, data: '2026-11-02' })]
@@ -48,21 +59,6 @@ describe('total que temos', () => {
     const s = summarizeMonth({ mes: '2026-10', transactions: [t({ tipo: 'reserva', valorCents: 99_999 })], bills: [], rates: perUSD, moeda: 'BRL', pessoa: 'todos' })
     expect(s.entradas).toBe(0)
     expect(s.saidas).toBe(0)
-  })
-})
-
-describe('valor adicionado à reserva', () => {
-  it('dinheiro novo na reserva aumenta o total e a reserva, e o disponível não muda', () => {
-    const base0 = summarizeTotals({ ...base, transactions: [t({ id: '1', valorCents: 100_000 })] })
-    const r = summarizeTotals({ ...base, transactions: [t({ id: '1', valorCents: 100_000 }), t({ id: '2', tipo: 'reserva', aporte: true, valorCents: 1_000_000 })] })
-    expect(r.total).toBe(base0.total + 1_000_000)
-    expect(r.reserva).toBe(1_000_000)
-    expect(r.disponivel).toBe(base0.disponivel)
-  })
-  it('guardar do disponível não muda o total (diferente de adicionar)', () => {
-    const r = summarizeTotals({ ...base, transactions: [t({ id: '1', valorCents: 100_000 }), t({ id: '2', tipo: 'reserva', valorCents: 40_000 })] })
-    expect(r.total).toBe(100_000)
-    expect(r.disponivel).toBe(60_000)
   })
 })
 
@@ -116,7 +112,7 @@ describe('débito × crédito: pagar uma conta', () => {
     const calc = (bills: Bill[], txs: Transaction[]) => {
       const tot = summarizeTotals({ ...base, transactions: txs })
       const cred = summarizeBillsDue({ bills, ate: endOfMonth('2026-10'), hoje, moeda: 'BRL', rates: perUSD, pessoa: 'todos' })
-      return { total: tot.total, credito: cred.total, sobra: tot.disponivel - cred.total }
+      return { total: tot.total, credito: cred.total, sobra: tot.total - cred.total }
     }
     const antes = calc([conta], [entrada])
     const r = payBill(conta, { now: 'n', today: hoje, perUSD, newId: () => 'tx-luz' })

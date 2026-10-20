@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { summarizeTotals } from '../domain/balance'
 import { todayISO } from '../domain/dates'
-import { centsToInput, parseAmount } from '../domain/money'
+import { centsToInput, convert, formatMoney, parseAmount } from '../domain/money'
 import type { Currency, PersonId, Transaction } from '../domain/types'
 import { newId, nowISO, useApp } from '../state/data'
 import { AmountInput, ConversionHint, Field, Segmented, inputCls, peopleOptions } from './fields'
@@ -10,14 +11,15 @@ export type ReserveMode = 'in' | 'add' | 'out'
 
 /** Nome e símbolo de um movimento da reserva, usado nas listas. */
 export function reserveInfo(t: Pick<Transaction, 'retirada' | 'aporte'>): { title: string; sign: string } {
-  if (t.aporte) return { title: 'Valor adicionado à reserva', sign: '+' }
+  if (t.aporte) return { title: 'Já tinha na reserva', sign: '+' }
   if (t.retirada) return { title: 'Retirada da reserva', sign: '↩' }
-  return { title: 'Guardado do disponível', sign: '→' }
+  return { title: 'Guardado na reserva', sign: '→' }
 }
 
-/** Guardar uma parte do dinheiro na reserva, ou tirar dela. Não é gasto: só muda o que está disponível. */
+/** Guardar dinheiro na reserva (sai do total), tirar dela (volta ao total) ou informar o que a reserva já tinha. */
 export default function ReserveSheet({ tx, defaultPessoa, initialMode = 'in', onClose }: { tx: Transaction | null; defaultPessoa: PersonId; initialMode?: ReserveMode; onClose: () => void }) {
-  const { settings, saveTransaction, removeTransaction } = useApp()
+  const { settings, transactions, saveTransaction, removeTransaction } = useApp()
+  const display = settings.moedaExibicao
   const [mode, setMode] = useState<ReserveMode>(tx ? (tx.retirada ? 'out' : tx.aporte ? 'add' : 'in') : initialMode)
   const [amount, setAmount] = useState(tx ? centsToInput(tx.valorCents) : '')
   const [moeda, setMoeda] = useState<Currency>(tx?.moeda ?? settings.moedaExibicao)
@@ -25,6 +27,12 @@ export default function ReserveSheet({ tx, defaultPessoa, initialMode = 'in', on
   const [pessoa, setPessoa] = useState<PersonId>(tx?.pessoa ?? defaultPessoa)
   const [descricao, setDescricao] = useState(tx?.descricao ?? '')
   const cents = parseAmount(amount)
+
+  // limite: só dá para guardar até o saldo de agora, e tirar até o que há na reserva (sem contar este mesmo movimento, se estiver editando)
+  const now0 = summarizeTotals({ transactions: transactions.filter((x) => x.id !== tx?.id), ate: todayISO(), moeda: display, pessoa: 'todos' })
+  const limit = mode === 'in' ? now0.total : mode === 'out' ? now0.reserva : Infinity
+  const needed = cents === null ? 0 : convert(cents, moeda, display, settings.rates.perUSD)
+  const over = mode !== 'add' && needed > Math.max(0, limit)
 
   const save = async () => {
     const now = nowISO()
@@ -50,10 +58,10 @@ export default function ReserveSheet({ tx, defaultPessoa, initialMode = 'in', on
       title={tx ? 'Editar movimento da reserva' : 'Reserva'}
       onClose={onClose}
       onSubmit={save}
-      canSubmit={cents !== null && cents > 0 && !!data}
+      canSubmit={cents !== null && cents > 0 && !!data && !over}
       danger={tx ? [{ label: 'Excluir', onClick: async () => { await removeTransaction(tx.id); onClose() } }] : undefined}
     >
-      <Segmented label="Operação" value={mode} onChange={setMode} options={[{ value: 'add', label: 'Adicionar' }, { value: 'in', label: 'Guardar' }, { value: 'out', label: 'Tirar' }]} />
+      <Segmented label="Operação" value={mode} onChange={setMode} options={[{ value: 'in', label: 'Guardar' }, { value: 'out', label: 'Tirar' }, { value: 'add', label: 'Já tinha' }]} />
       <Field label="Valor">
         <AmountInput amount={amount} currency={moeda} onAmount={setAmount} onCurrency={setMoeda} />
       </Field>
@@ -71,11 +79,17 @@ export default function ReserveSheet({ tx, defaultPessoa, initialMode = 'in', on
           </select>
         </Field>
       </div>
-      <p className="text-xs text-muted">
-        {mode === 'add' && 'Dinheiro novo na reserva (que já tinham guardado ou veio de fora): o total e a reserva sobem juntos.'}
-        {mode === 'in' && 'Separa uma parte do que já está disponível: o total não muda, só diminui o disponível.'}
-        {mode === 'out' && 'Devolve da reserva para o disponível: o total não muda.'}
-      </p>
+      {over ? (
+        <p role="alert" className="text-xs text-bad">
+          {mode === 'in' ? `Só há ${formatMoney(Math.max(0, limit), display)} de saldo para guardar.` : `Só há ${formatMoney(Math.max(0, limit), display)} na reserva para tirar.`}
+        </p>
+      ) : (
+        <p className="text-xs text-muted">
+          {mode === 'in' && `Sai do total e vai para a reserva. Dá para guardar até ${formatMoney(Math.max(0, limit), display)} (o saldo de agora).`}
+          {mode === 'out' && `Volta da reserva para o total. Dá para tirar até ${formatMoney(Math.max(0, limit), display)} (o que há na reserva).`}
+          {mode === 'add' && 'Para o dinheiro que a reserva já tinha antes de usar o app. Só soma na reserva e não mexe no total.'}
+        </p>
+      )}
     </Sheet>
   )
 }

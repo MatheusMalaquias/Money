@@ -3,42 +3,47 @@ import { convert } from './money'
 import type { Bill, Currency, ISODate, PerUSD, PersonId, Transaction } from './types'
 
 export interface Totals {
-  /** Tudo que entrou menos tudo que saiu (já com o dízimo descontado), acumulado até a data. */
+  /** O que há para usar agora: entradas − saídas (já sem o dízimo) − o que foi para a reserva + o que voltou dela. */
   total: number
-  /** Parte do total separada na reserva. */
+  /** Dinheiro que está na reserva. */
   reserva: number
-  /** O que sobra para usar: total − reserva. */
-  disponivel: number
+  /** Tudo junto: total + reserva. */
+  junto: number
   /** Total de cada pessoa ('casal' = valores compartilhados). */
   porPessoa: { pessoa: PersonId; total: number }[]
 }
 
 /**
  * "Quanto temos": soma acumulada de todas as entradas menos todas as saídas até `ate` (inclusive).
- * O dízimo já é uma saída, então o total é depois dele. A reserva não é gasto: só separa uma parte do total.
+ * O dízimo já é uma saída, então o total é depois dele. A reserva é um cofre separado:
+ *  - guardar: sai do total e entra na reserva;
+ *  - tirar: sai da reserva e volta ao total;
+ *  - "já tinha": saldo que a reserva já tinha antes do app, só soma na reserva (não veio do total).
  * Cada lançamento usa o câmbio do dia em que foi feito.
  */
 export function summarizeTotals({ transactions, ate, moeda, pessoa }: { transactions: Transaction[]; ate: ISODate; moeda: Currency; pessoa: PersonId | 'todos' }): Totals {
   let total = 0
   let reserva = 0
   const por = new Map<PersonId, number>()
+  const move = (p: PersonId, d: number) => {
+    total += d
+    por.set(p, (por.get(p) ?? 0) + d)
+  }
   for (const t of transactions) {
     if (t.data > ate || (pessoa !== 'todos' && t.pessoa !== pessoa)) continue
     const v = convert(t.valorCents, t.moeda, moeda, t.cambio)
     if (t.tipo === 'reserva') {
-      reserva += t.retirada ? -v : v
-      if (t.aporte) {
-        // dinheiro novo na reserva: entra no total também (senão a reserva passaria do que vocês têm)
-        total += v
-        por.set(t.pessoa, (por.get(t.pessoa) ?? 0) + v)
+      if (t.aporte) reserva += v
+      else if (t.retirada) {
+        reserva -= v
+        move(t.pessoa, v)
+      } else {
+        reserva += v
+        move(t.pessoa, -v)
       }
-      continue
-    }
-    const delta = t.tipo === 'entrada' ? v : -v
-    total += delta
-    por.set(t.pessoa, (por.get(t.pessoa) ?? 0) + delta)
+    } else move(t.pessoa, t.tipo === 'entrada' ? v : -v)
   }
-  return { total, reserva, disponivel: total - reserva, porPessoa: [...por].map(([p, t]) => ({ pessoa: p, total: t })) }
+  return { total, reserva, junto: total + reserva, porPessoa: [...por].map(([p, t]) => ({ pessoa: p, total: t })) }
 }
 
 /** Último dia possível do mês "YYYY-MM" para comparar como texto (dia 31 serve: datas reais nunca passam do fim do mês). */
