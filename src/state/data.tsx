@@ -310,18 +310,28 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
     [unpay]
   )
 
-  const removeBill = useCallback(async (id: string) => {
-    await st.current!.remove('bills', id)
-    setBills((l) => l.filter((b) => b.id !== id))
+  /** Apaga as contas e, nas já pagas, também o lançamento do pagamento (o valor volta ao total). */
+  const deleteBills = useCallback(async (ids: Set<string>) => {
+    const gone = live.current.bills.filter((b) => ids.has(b.id))
+    const txIds = new Set(gone.map((b) => b.transacaoId).filter((x): x is string => !!x))
+    for (const b of gone) await st.current!.remove('bills', b.id)
+    for (const id of txIds) await st.current!.remove('transactions', id)
+    setBills((l) => l.filter((b) => !ids.has(b.id)))
+    setTransactions((l) => l.filter((t) => !txIds.has(t.id)))
   }, [])
 
-  const removeBillAndNext = useCallback(async (id: string) => {
-    const bill = live.current.bills.find((b) => b.id === id)
-    if (!bill) return
-    const gone = new Set(live.current.bills.filter((b) => b.serieId === bill.serieId && b.status === 'pendente' && b.vencimento >= bill.vencimento).map((b) => b.id))
-    for (const g of gone) await st.current!.remove('bills', g)
-    setBills((l) => l.filter((b) => !gone.has(b.id)))
-  }, [])
+  const removeBill = useCallback((id: string) => deleteBills(new Set([id])), [deleteBills])
+
+  const removeBillAndNext = useCallback(
+    async (id: string) => {
+      const bill = live.current.bills.find((b) => b.id === id)
+      if (!bill) return
+      // esta conta (mesmo paga) e as parcelas pendentes seguintes da mesma série
+      const ids = new Set(live.current.bills.filter((b) => b.id === id || (b.serieId === bill.serieId && b.status === 'pendente' && b.vencimento >= bill.vencimento)).map((b) => b.id))
+      await deleteBills(ids)
+    },
+    [deleteBills]
+  )
 
   const saveGoal = useCallback(async (g: Goal) => {
     await st.current!.put('goals', g)

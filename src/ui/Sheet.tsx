@@ -28,13 +28,17 @@ export function Sheet({ title, onClose, onSubmit, submitLabel = 'Salvar', canSub
         <div className="mx-auto -mt-2 h-1.5 w-10 rounded-full bg-line sm:hidden" />
         <h2 className="font-semibold">{title}</h2>
         {children}
-        <div className="flex items-center gap-2 pt-1">
-          {danger?.map((d) => (
-            <button key={d.label} type="button" onClick={d.onClick} className="rounded-lg px-2 py-3 text-sm font-medium text-bad">
-              {d.label}
-            </button>
-          ))}
-          <button type="button" onClick={onClose} className="ml-auto rounded-lg px-4 py-3 text-sm text-muted">
+        {danger && danger.length > 0 && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-3">
+            {danger.map((d) => (
+              <button key={d.label} type="button" onClick={d.onClick} className="rounded-lg py-1.5 text-sm font-medium text-bad">
+                {d.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} className="rounded-lg px-4 py-3 text-sm text-muted">
             Cancelar
           </button>
           <button type="submit" disabled={!canSubmit} className="rounded-lg bg-accent px-5 py-3 text-sm font-semibold text-on-accent disabled:opacity-40">

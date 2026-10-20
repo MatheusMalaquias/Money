@@ -111,6 +111,8 @@ function BillSheet({ bill, defaultPessoa, onSaved, onClose }: { bill: Bill | nul
   const [fimMes, setFimMes] = useState(bill?.fim?.slice(0, 7) ?? '') // 'YYYY-MM' ou vazio = sem fim
   const cents = parseAmount(amount)
   const paid = bill?.status === 'paga'
+  // há parcelas pendentes depois desta na mesma conta (mensal/anual)?
+  const hasNext = !!bill && bills.some((x) => x.serieId === bill.serieId && x.id !== bill.id && x.status === 'pendente' && x.vencimento >= bill.vencimento)
   const dia = Number(vencimento.slice(8, 10))
   const fim = recorrencia !== 'unica' && fimMes ? clampedDate(fimMes, dia) : undefined
   const fimOk = !fim || fim >= vencimento
@@ -147,10 +149,28 @@ function BillSheet({ bill, defaultPessoa, onSaved, onClose }: { bill: Bill | nul
       onSubmit={save}
       canSubmit={valid}
       danger={
-        bill && !paid
+        bill
           ? [
-              { label: 'Excluir', onClick: async () => { await removeBill(bill.id); onClose() } },
-              ...(bill.fim && remaining(bills, bill) > 1 ? [{ label: 'Excluir esta e as próximas', onClick: async () => { await removeBillAndNext(bill.id); onClose() } }] : []),
+              {
+                label: paid ? 'Excluir conta e pagamento' : 'Excluir',
+                onClick: async () => {
+                  if (paid && !confirm(`Excluir "${bill.descricao}" e o pagamento de ${formatMoney(bill.valorCents, bill.moeda)}? O valor volta ao total.`)) return
+                  await removeBill(bill.id)
+                  onClose()
+                },
+              },
+              ...(hasNext
+                ? [
+                    {
+                      label: 'Esta e as próximas',
+                      onClick: async () => {
+                        if (!confirm(`Excluir esta conta${paid ? ' (com o pagamento)' : ''} e as próximas parcelas pendentes?`)) return
+                        await removeBillAndNext(bill.id)
+                        onClose()
+                      },
+                    },
+                  ]
+                : []),
             ]
           : undefined
       }
@@ -213,7 +233,7 @@ function BillSheet({ bill, defaultPessoa, onSaved, onClose }: { bill: Bill | nul
         </p>
       )}
       {bill && bill.fim && <p className="text-xs text-muted">Mudar o valor ou a categoria vale só para esta parcela.</p>}
-      {paid && <p className="text-xs text-muted">Conta paga: para excluir, desfaça o pagamento antes.</p>}
+      {paid && <p className="text-xs text-muted">Excluir apaga a conta e o pagamento dela: o valor volta ao total. Para só desfazer o pagamento, use o círculo na lista.</p>}
     </Sheet>
   )
 }
