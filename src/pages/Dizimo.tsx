@@ -30,13 +30,13 @@ export default function Dizimo({ mes, pessoa }: { mes: string; pessoa: PersonId 
       <Card className="space-y-2">
         <h3 className="text-sm font-semibold text-muted">A conta do mês</h3>
         <dl className="num space-y-1.5 text-sm">
-          <div className="flex justify-between"><dt className="text-muted">Recebido (com dízimo)</dt><dd>{formatMoney(s.base, display)}</dd></div>
+          <div className="flex justify-between"><dt className="text-muted">Recebido</dt><dd>{formatMoney(s.base, display)}</dd></div>
           <div className="flex justify-between"><dt className="text-muted">Dízimo ({pct}%)</dt><dd>− {formatMoney(s.total, display)}</dd></div>
           <div className="flex justify-between border-t border-line pt-2 font-semibold"><dt>Fica com vocês</dt><dd>{formatMoney(s.liquido, display)}</dd></div>
         </dl>
         {s.semDizimo.base > 0 && (
           <p className="num rounded-lg bg-raised px-3 py-2 text-xs text-muted">
-            Há {formatMoney(s.semDizimo.base, display)} em entradas sem dízimo neste mês. Se entrassem, o dízimo seria de <b className="text-main">{formatMoney(s.semDizimo.seria, display)}</b>. Para incluir, abra a entrada em Lançar e marque "Descontar dízimo".
+            {formatMoney(s.semDizimo.base, display)} em entradas deste mês estão marcadas como sem dízimo. Se entrassem, o dízimo seria de <b className="text-main">{formatMoney(s.semDizimo.seria, display)}</b>. Para incluir, abra a entrada em Lançar e marque "Dízimo automático".
           </p>
         )}
       </Card>

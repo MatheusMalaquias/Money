@@ -74,7 +74,7 @@ function TitheCard() {
         <input inputMode="decimal" value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} aria-label="Percentual do dízimo" className={`${inputCls} num`} />
         <span className="text-sm text-muted">% das entradas</span>
       </div>
-      <p className="text-xs text-muted">Cada entrada lançada gera sozinha uma saída "Dízimo" com esse percentual (dá para desmarcar em cada entrada). Mudar o percentual vale para as próximas entradas e para as que você editar. Use 0 para desligar.</p>
+      <p className="text-xs text-muted">Toda entrada, nova ou antiga, já tem o dízimo calculado sozinho: não é preciso lançar nada. Ao mudar o percentual, as entradas do mês atual em diante são recalculadas; meses anteriores ficam como estavam. Dá para deixar uma entrada de fora (um reembolso, por exemplo) desmarcando "Dízimo automático" nela. Use 0 para desligar.</p>
     </Card>
   )
 }

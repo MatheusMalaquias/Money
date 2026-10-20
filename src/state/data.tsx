@@ -3,7 +3,7 @@ import { payBill, reconcileSeries, unpayBill } from '../domain/bills'
 import { dedupeCategories } from '../domain/categories'
 import { todayISO, diffDays } from '../domain/dates'
 import { defaultSettings, seedCategories } from '../domain/defaults'
-import { buildTithe, DEFAULT_TITHE_BPS, titheAmount } from '../domain/tithe'
+import { buildTithe, DEFAULT_TITHE_BPS, entersTithe, titheAmount } from '../domain/tithe'
 import { isStale, mergeFetched, setManual } from '../domain/rates'
 import type { Bill, Category, Currency, Goal, PlanRule, Settings, Transaction } from '../domain/types'
 import { fetchRates } from '../services/fx'
@@ -199,8 +199,8 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
     async (income: Transaction) => {
       const existing = live.current.transactions.find((x) => x.dizimoDeId === income.id)
       const bps = live.current.settings.dizimoBps ?? DEFAULT_TITHE_BPS
-      if (income.dizimo && titheAmount(income.valorCents, bps) > 0) {
-        const d = buildTithe(income, { now: nowISO(), newId, categoriaId: await ensureTitheCategory(), bps, existing })
+      if (entersTithe(income) && titheAmount(income.valorCents, bps) > 0) {
+        const d = buildTithe(income, { now: nowISO(), categoriaId: await ensureTitheCategory(), bps, existing })
         await st.current!.put('transactions', d)
         setTransactions((l) => upsert(l, d))
       } else if (existing) {
@@ -210,6 +210,46 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
     },
     [ensureTitheCategory]
   )
+
+  /**
+   * Deixa o dízimo de TODAS as entradas em dia, sem ninguém lançar nada:
+   * cria o que falta (inclusive para entradas antigas) e, do mês atual em diante, acerta valores quando o percentual muda.
+   * Meses passados já fechados não são recalculados.
+   */
+  const syncAllTithes = useCallback(async () => {
+    const { transactions: all, settings: cfg } = live.current
+    const bps = cfg.dizimoBps ?? DEFAULT_TITHE_BPS
+    const from = `${todayISO().slice(0, 8)}01`
+    const byOrigin = new Map(all.filter((t) => t.dizimoDeId).map((t) => [t.dizimoDeId!, t]))
+    const puts: Transaction[] = []
+    const removes: string[] = []
+    let categoriaId: string | null = null
+    for (const inc of all.filter((t) => t.tipo === 'entrada' && !t.dizimoDeId)) {
+      const existing = byOrigin.get(inc.id)
+      const amount = titheAmount(inc.valorCents, bps)
+      if (entersTithe(inc) && amount > 0) {
+        if (!existing || (existing.valorCents !== amount && inc.data >= from)) {
+          categoriaId ??= await ensureTitheCategory()
+          puts.push(buildTithe(inc, { now: nowISO(), categoriaId, bps, existing }))
+        }
+      } else if (existing && (inc.dizimo === false || inc.data >= from)) {
+        removes.push(existing.id)
+      }
+    }
+    if (!puts.length && !removes.length) return
+    await st.current!.putMany('transactions', puts)
+    for (const id of removes) await st.current!.remove('transactions', id)
+    setTransactions((l) => puts.reduce(upsert, l.filter((t) => !removes.includes(t.id))))
+  }, [ensureTitheCategory])
+
+  // roda ao abrir e quando o percentual muda; uma execução por vez
+  const syncing = useRef<Promise<void> | null>(null)
+  useEffect(() => {
+    if (!ready) return
+    syncing.current ??= syncAllTithes().finally(() => {
+      syncing.current = null
+    })
+  }, [ready, settings.dizimoBps, syncAllTithes])
 
   const saveTransaction = useCallback(
     async (t: Transaction) => {

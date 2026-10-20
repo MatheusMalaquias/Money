@@ -54,7 +54,7 @@ export default function Lancar({ mes, onMes, pessoa, onPessoa }: Props) {
                     <span className={`num block text-sm font-semibold ${entrada ? 'text-good' : 'text-main'}`}>
                       {entrada ? '+' : '−'} {formatMoney(t.valorCents, t.moeda)}
                     </span>
-                    {entrada && t.dizimo && dizimoDe.has(t.id) && (
+                    {entrada && dizimoDe.has(t.id) && (
                       <span className="num block text-xs text-muted">líquido {formatMoney(t.valorCents - dizimoDe.get(t.id)!, t.moeda)}</span>
                     )}
                     {t.moeda !== display && (
@@ -83,8 +83,8 @@ function TransactionSheet({ tx, defaultPessoa, onClose }: { tx: Transaction | nu
   const [categoriaId, setCategoriaId] = useState(tx?.categoriaId ?? categories[0]?.id ?? '')
   const [pessoa, setPessoa] = useState<PersonId>(tx?.pessoa ?? defaultPessoa)
   const [descricao, setDescricao] = useState(tx?.descricao ?? '')
-  // entrada nova já nasce com dízimo; entradas antigas (sem o campo) ficam como estavam
-  const [dizimo, setDizimo] = useState(tx ? !!tx.dizimo : true)
+  // toda entrada entra no dízimo sozinha; desmarcar é a exceção (ex.: um reembolso)
+  const [dizimo, setDizimo] = useState(tx ? tx.dizimo !== false : true)
   const bps = settings.dizimoBps ?? DEFAULT_TITHE_BPS
   const cents = parseAmount(amount)
   const valid = cents !== null && cents > 0 && !!data && !!categoriaId
@@ -148,7 +148,10 @@ function TransactionSheet({ tx, defaultPessoa, onClose }: { tx: Transaction | nu
         <div className="space-y-2 rounded-lg bg-raised px-3 py-2.5 text-sm">
           <label className="flex items-center gap-3">
             <input type="checkbox" checked={dizimo} onChange={(e) => setDizimo(e.target.checked)} className="h-5 w-5 accent-[rgb(var(--accent))]" />
-            <span className="flex-1">Descontar dízimo ({bps / 100}%)</span>
+            <span className="flex-1">
+              Dízimo automático ({bps / 100}%)
+              {!dizimo && <span className="block text-xs text-muted">Este valor ficou de fora do dízimo.</span>}
+            </span>
           </label>
           {cents !== null && cents > 0 && (
             <dl className="num space-y-1 border-t border-line pt-2 text-xs">
