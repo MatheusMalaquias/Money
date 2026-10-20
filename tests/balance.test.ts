@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { averageMonthlySpend, endOfMonth, summarizeBillsDue, summarizeTotals } from '../src/domain/balance'
+import { averageMonthlySpend, breakdownTotals, endOfMonth, summarizeBillsDue, summarizeTotals } from '../src/domain/balance'
 import { summarizeMonth } from '../src/domain/month'
 import type { Bill, Transaction } from '../src/domain/types'
 
@@ -120,5 +120,23 @@ describe('débito × crédito: pagar uma conta', () => {
     expect(depois.total).toBe(antes.total - 35_000)
     expect(depois.credito).toBe(antes.credito - 35_000)
     expect(depois.sobra).toBe(antes.sobra)
+  })
+})
+
+describe('de onde vem o total', () => {
+  const txs = [
+    t({ id: '1', valorCents: 100_000 }), // recebido
+    t({ id: '2', tipo: 'saida', valorCents: 10_000, dizimoDeId: '1' }), // dízimo
+    t({ id: '3', tipo: 'saida', valorCents: 30_000 }), // pago
+    t({ id: '4', tipo: 'reserva', valorCents: 20_000 }), // guardado
+    t({ id: '5', tipo: 'reserva', retirada: true, valorCents: 5_000 }), // retirado
+    t({ id: '6', tipo: 'reserva', aporte: true, valorCents: 999_999 }), // já tinha: fora do total
+    t({ id: '7', valorCents: 70_000, data: '2026-11-05' }), // entrada futura
+  ]
+  it('as partes explicam o total, e as entradas futuras ficam de fora', () => {
+    const b = breakdownTotals({ ...base, transactions: txs })
+    expect(b).toEqual({ recebido: 100_000, dizimo: 10_000, pago: 30_000, guardado: 20_000, retirado: 5_000, entradasFuturas: 70_000 })
+    const total = summarizeTotals({ ...base, transactions: txs }).total
+    expect(b.recebido - b.dizimo - b.pago - b.guardado + b.retirado).toBe(total)
   })
 })

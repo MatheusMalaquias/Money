@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { averageMonthlySpend, endOfMonth, summarizeBillsDue, summarizeTotals } from '../domain/balance'
+import { averageMonthlySpend, breakdownTotals, endOfMonth, summarizeBillsDue, summarizeTotals } from '../domain/balance'
 import { summarizeMonth } from '../domain/month'
 import { diffDays, monthLabel, todayISO, toBR } from '../domain/dates'
 import { formatMoney } from '../domain/money'
@@ -31,6 +31,7 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
     () => summarizeTotals({ transactions, ate: endOfMonth(mes), moeda: display, pessoa }),
     [transactions, mes, display, pessoa]
   )
+  const parts = useMemo(() => breakdownTotals({ transactions, ate: endOfMonth(mes), moeda: display, pessoa }), [transactions, mes, display, pessoa])
   const due = useMemo(
     () => summarizeBillsDue({ bills, ate: endOfMonth(mes), hoje: todayISO(), moeda: display, rates: settings.rates.perUSD, pessoa }),
     [bills, mes, display, settings.rates.perUSD, pessoa]
@@ -85,6 +86,23 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
                   ))}
               </div>
             )}
+            <details className="border-t border-line pt-3 text-sm">
+              <summary className="cursor-pointer text-xs font-medium text-accent">Como chegamos nesse total?</summary>
+              <dl className="num mt-2 space-y-1.5">
+                <div className="flex justify-between"><dt className="text-muted">Recebido</dt><dd className="text-good">+ {formatMoney(parts.recebido, display)}</dd></div>
+                {parts.dizimo > 0 && <div className="flex justify-between"><dt className="text-muted">Dízimo</dt><dd>− {formatMoney(parts.dizimo, display)}</dd></div>}
+                <div className="flex justify-between"><dt className="text-muted">Contas pagas e gastos</dt><dd>− {formatMoney(parts.pago, display)}</dd></div>
+                {parts.guardado > 0 && <div className="flex justify-between"><dt className="text-muted">Guardado na reserva</dt><dd>− {formatMoney(parts.guardado, display)}</dd></div>}
+                {parts.retirado > 0 && <div className="flex justify-between"><dt className="text-muted">Tirado da reserva</dt><dd>+ {formatMoney(parts.retirado, display)}</dd></div>}
+                <div className="flex justify-between border-t border-line pt-1.5 font-semibold"><dt>Total</dt><dd className={t.total < 0 ? 'text-bad' : ''}>{formatMoney(t.total, display)}</dd></div>
+              </dl>
+              {parts.recebido === 0 && parts.pago > 0 && (
+                <p className="mt-2 rounded-lg bg-raised px-3 py-2 text-xs text-muted">Ainda não há nenhuma entrada lançada: o total é só o que já foi pago. Lance os salários em Lançar → Entrada.</p>
+              )}
+              {parts.entradasFuturas > 0 && (
+                <p className="mt-2 rounded-lg bg-raised px-3 py-2 text-xs text-muted">Há {formatMoney(parts.entradasFuturas, display)} em entradas com data depois de {monthLabel(mes)}. Elas só contam a partir do mês delas.</p>
+              )}
+            </details>
           </Card>
 
           <Card className="space-y-2">

@@ -87,3 +87,36 @@ export function averageMonthlySpend({ transactions, mes, moeda, pessoa, months =
   if (perMonth.size === 0) return 0
   return Math.round([...perMonth.values()].reduce((a, b) => a + b, 0) / perMonth.size)
 }
+
+export interface Breakdown {
+  /** Entradas até a data. */
+  recebido: number
+  /** Dízimo já descontado. */
+  dizimo: number
+  /** Contas pagas e gastos (sem o dízimo). */
+  pago: number
+  /** Enviado para a reserva (sai do total). */
+  guardado: number
+  /** Devolvido da reserva (volta ao total). */
+  retirado: number
+  /** Entradas com data depois da data escolhida: ainda não contam no total. */
+  entradasFuturas: number
+}
+
+/** De onde vem o total: recebido − dízimo − pago − guardado + retirado. Mesma regra de `summarizeTotals`. */
+export function breakdownTotals({ transactions, ate, moeda, pessoa }: { transactions: Transaction[]; ate: ISODate; moeda: Currency; pessoa: PersonId | 'todos' }): Breakdown {
+  const b: Breakdown = { recebido: 0, dizimo: 0, pago: 0, guardado: 0, retirado: 0, entradasFuturas: 0 }
+  for (const t of transactions) {
+    if (pessoa !== 'todos' && t.pessoa !== pessoa) continue
+    const v = convert(t.valorCents, t.moeda, moeda, t.cambio)
+    if (t.data > ate) {
+      if (t.tipo === 'entrada') b.entradasFuturas += v
+      continue
+    }
+    if (t.tipo === 'entrada') b.recebido += v
+    else if (t.tipo === 'saida') b[t.dizimoDeId ? 'dizimo' : 'pago'] += v
+    else if (t.retirada) b.retirado += v
+    else if (!t.aporte) b.guardado += v
+  }
+  return b
+}
