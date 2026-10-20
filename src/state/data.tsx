@@ -7,7 +7,7 @@ import type { Bill, Category, Currency, Goal, PlanRule, Settings, Transaction } 
 import { fetchRates } from '../services/fx'
 import { createIndexedDBStorage } from '../storage/indexeddb'
 import { createMemoryStorage } from '../storage/memory'
-import type { Storage } from '../storage/types'
+import type { Snapshot, Storage } from '../storage/types'
 
 export const newId = () => crypto.randomUUID()
 export const nowISO = () => new Date().toISOString()
@@ -42,6 +42,9 @@ export interface AppData {
   updateSettings(patch: Partial<Settings>): Promise<void>
   refreshRates(): Promise<void>
   fixRate(currency: Currency, value: number | null): Promise<void>
+  exportData(): Promise<Snapshot>
+  /** Substitui todos os dados pelo conteúdo do backup. */
+  importData(snap: Snapshot): Promise<void>
 }
 
 const Ctx = createContext<AppData | null>(null)
@@ -200,9 +203,23 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
     [updateSettings, refreshRates]
   )
 
+  const exportData = useCallback(() => st.current!.snapshot(), [])
+
+  const importData = useCallback(async (snap: Snapshot) => {
+    const settings = snap.settings ?? defaultSettings()
+    await st.current!.restore({ ...snap, settings })
+    live.current = { settings, bills: snap.data.bills, transactions: snap.data.transactions }
+    setSettings(settings)
+    setCategories(byOrder(snap.data.categories))
+    setBills(snap.data.bills)
+    setTransactions(snap.data.transactions)
+    setGoals(snap.data.goals)
+    setRules(snap.data.rules)
+  }, [])
+
   const value: AppData = {
     ready, persistent, settings, categories, bills, transactions, goals, rules, ratesStatus,
-    saveTransaction, removeTransaction, saveBill, removeBill, pay, unpay, saveGoal, removeGoal, saveCategory, removeCategory, updateSettings, refreshRates, fixRate,
+    saveTransaction, removeTransaction, saveBill, removeBill, pay, unpay, saveGoal, removeGoal, saveCategory, removeCategory, updateSettings, refreshRates, fixRate, exportData, importData,
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

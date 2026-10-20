@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { toBR } from '../domain/dates'
+import { useRef, useState } from 'react'
+import { backupFileName, buildBackup, parseBackup } from '../domain/backup'
+import { toBR, todayISO } from '../domain/dates'
 import { formatMoney } from '../domain/money'
 import { CURRENCIES, type Category, type Currency } from '../domain/types'
 import { newId, nowISO, useApp } from '../state/data'
@@ -45,6 +46,7 @@ export default function Config({ theme, onTheme }: { theme: ThemePref; onTheme: 
 
       <RatesCard />
       <CategoriesCard />
+      <BackupCard />
     </Screen>
   )
 }
@@ -139,6 +141,60 @@ function CategoriesCard() {
         <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nova categoria" className={inputCls} />
         <button type="submit" disabled={!nome.trim()} className="rounded-lg bg-accent px-4 text-sm font-semibold text-on-accent disabled:opacity-40">Adicionar</button>
       </form>
+    </Card>
+  )
+}
+
+/** Os dados ficam só neste aparelho: o backup é a única cópia de segurança. */
+function BackupCard() {
+  const { exportData, importData } = useApp()
+  const input = useRef<HTMLInputElement>(null)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const doExport = async () => {
+    const json = JSON.stringify(buildBackup(await exportData(), nowISO()), null, 2)
+    const file = new File([json], backupFileName(todayISO()), { type: 'application/json' })
+    try {
+      // no celular abre a folha de compartilhamento (Salvar em Arquivos, enviar por WhatsApp…)
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file] })
+        setMsg({ ok: true, text: 'Backup pronto.' })
+        return
+      }
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return // a pessoa fechou a folha de compartilhamento
+    }
+    const url = URL.createObjectURL(file)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = file.name
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    setMsg({ ok: true, text: `Backup baixado: ${file.name}` })
+  }
+
+  const doImport = async (file: File) => {
+    try {
+      const snap = parseBackup(await file.text())
+      const n = snap.data.transactions.length + snap.data.bills.length + snap.data.goals.length
+      if (!confirm(`Importar "${file.name}" (${n} registros)? Isso SUBSTITUI todos os dados atuais deste aparelho.`)) return
+      await importData(snap)
+      setMsg({ ok: true, text: 'Backup importado.' })
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message })
+    }
+  }
+
+  return (
+    <Card className="space-y-3">
+      <h2 className={h2}>Backup</h2>
+      <p className="text-xs text-muted">Seus dados ficam só neste aparelho. Exporte de vez em quando: é também como passam os dados de um celular para outro.</p>
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => void doExport()} className="rounded-lg bg-accent py-2.5 text-sm font-semibold text-on-accent">Exportar</button>
+        <button onClick={() => input.current?.click()} className="rounded-lg border border-line py-2.5 text-sm font-medium">Importar</button>
+      </div>
+      <input ref={input} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void doImport(f) }} />
+      {msg && <p role="status" className={`text-xs ${msg.ok ? 'text-good' : 'text-bad'}`}>{msg.text}</p>}
     </Card>
   )
 }
