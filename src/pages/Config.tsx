@@ -48,6 +48,7 @@ export default function Config({ theme, onTheme }: { theme: ThemePref; onTheme: 
       <RatesCard />
       <CategoriesCard />
       <BackupCard />
+      <ResetCard />
     </Screen>
   )
 }
@@ -217,6 +218,45 @@ function BackupCard() {
       </div>
       <input ref={input} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void doImport(f) }} />
       {msg && <p role="status" className={`text-xs ${msg.ok ? 'text-good' : 'text-bad'}`}>{msg.text}</p>}
+    </Card>
+  )
+}
+
+/** Apaga os dados (lançamentos, contas, metas, reserva) e mantém os ajustes e as categorias. Exige digitar ZERAR. */
+function ResetCard() {
+  const { categories, settings, importData } = useApp()
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [done, setDone] = useState(false)
+  const ok = text.trim().toUpperCase() === 'ZERAR'
+
+  const reset = async () => {
+    await importData({ data: { categories, bills: [], transactions: [], goals: [], rules: [] }, settings })
+    setOpen(false)
+    setText('')
+    setDone(true)
+  }
+
+  return (
+    <Card className="space-y-3 border-bad/40">
+      <h2 className="text-sm font-semibold text-bad">Zerar tudo</h2>
+      <p className="text-xs text-muted">
+        Apaga todos os lançamentos, contas, metas e movimentos da reserva <b>deste aparelho</b>. Os ajustes (nomes, moeda, dízimo, câmbio) e as categorias ficam. Não dá para desfazer: faça um Exportar antes se quiser guardar uma cópia.
+      </p>
+      {!open ? (
+        <button onClick={() => { setOpen(true); setDone(false) }} className="w-full rounded-lg border border-bad/60 py-2.5 text-sm font-medium text-bad">
+          Zerar todos os dados
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder='Digite ZERAR para confirmar' aria-label="Confirmação" autoCapitalize="characters" className={inputCls} />
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => { setOpen(false); setText('') }} className="rounded-lg border border-line py-2.5 text-sm">Cancelar</button>
+            <button onClick={() => void reset()} disabled={!ok} className="rounded-lg bg-bad py-2.5 text-sm font-semibold text-white disabled:opacity-40">Apagar tudo</button>
+          </div>
+        </div>
+      )}
+      {done && <p role="status" className="text-xs text-good">Tudo zerado. O app está como novo.</p>}
     </Card>
   )
 }
