@@ -1,24 +1,30 @@
 import { useState, type ReactNode } from 'react'
 import { monthKey, todayISO } from './domain/dates'
 import type { PersonId } from './domain/types'
+import type { AlertTarget } from './domain/alerts'
 import Config from './pages/Config'
 import Contas from './pages/Contas'
+import Inicio from './pages/Inicio'
 import Lancar from './pages/Lancar'
 import Mes from './pages/Mes'
 import Plano from './pages/Plano'
 import { DataProvider, useApp } from './state/data'
 import { useTheme } from './theme'
-import { IconBills, IconGear, IconMonth, IconPlan, IconSwap } from './ui/Icons'
+import { IconBills, IconGear, IconHome, IconMonth, IconPlan, IconSwap } from './ui/Icons'
 
-type Tab = 'mes' | 'contas' | 'lancar' | 'plano' | 'ajustes'
+type Tab = 'inicio' | 'mes' | 'contas' | 'lancar' | 'plano' | 'ajustes'
 
 const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
-  { id: 'mes', label: 'Mês', icon: <IconMonth /> },
+  { id: 'inicio', label: 'Início', icon: <IconHome /> },
+  { id: 'mes', label: 'Painel', icon: <IconMonth /> },
   { id: 'contas', label: 'Contas', icon: <IconBills /> },
   { id: 'lancar', label: 'Lançar', icon: <IconSwap /> },
   { id: 'plano', label: 'Plano', icon: <IconPlan /> },
   { id: 'ajustes', label: 'Ajustes', icon: <IconGear /> },
 ]
+
+/** Para onde cada alerta leva. */
+const GO: Record<AlertTarget, Tab> = { contas: 'contas', plano: 'plano', lancar: 'lancar', painel: 'mes', ajustes: 'ajustes' }
 
 export default function App() {
   return (
@@ -30,7 +36,7 @@ export default function App() {
 
 function Shell() {
   const { ready } = useApp()
-  const [tab, setTab] = useState<Tab>('mes')
+  const [tab, setTab] = useState<Tab>('inicio')
   const [theme, setTheme] = useTheme()
   // mês e pessoa escolhidos valem para as abas Mês, Lançar e Contas
   const [mes, setMes] = useState(() => monthKey(todayISO()))
@@ -43,6 +49,7 @@ function Shell() {
           <p className="pt-10 text-center text-sm text-muted">Carregando…</p>
         ) : (
           <>
+            {tab === 'inicio' && <Inicio onGo={(to) => setTab(GO[to])} />}
             {tab === 'mes' && <Mes mes={mes} onMes={setMes} pessoa={pessoa} onPessoa={setPessoa} />}
             {tab === 'contas' && <Contas pessoa={pessoa} onPessoa={setPessoa} />}
             {tab === 'lancar' && <Lancar mes={mes} onMes={setMes} pessoa={pessoa} onPessoa={setPessoa} />}
@@ -53,7 +60,7 @@ function Shell() {
       </main>
 
       <nav aria-label="Navegação" className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-card/95 backdrop-blur safe-bottom">
-        <ul className="mx-auto grid max-w-md grid-cols-5">
+        <ul className="mx-auto grid max-w-md grid-cols-6">
           {TABS.map((t) => (
             <li key={t.id}>
               <button

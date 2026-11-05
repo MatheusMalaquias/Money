@@ -1,4 +1,5 @@
-import type { Goal, ISODate } from './types'
+import { convert } from './money'
+import type { Currency, Goal, ISODate, PerUSD } from './types'
 
 /**
  * Meses que ainda cabem até o prazo, contando só meses completos:
@@ -34,4 +35,29 @@ export function planGoal(goal: Goal, today: ISODate): GoalPlan {
   // no último mês (meses = 0) ainda cabe um depósito: divide por pelo menos 1
   const porMesCents = Math.ceil(restanteCents / Math.max(1, meses))
   return { status: 'andamento', restanteCents, meses, porMesCents, progresso }
+}
+
+export interface MonthlyNeed {
+  /** Quanto guardar por mês, somando todas as metas em andamento, na moeda de exibição. */
+  total: number
+  /** Metas em andamento com prazo. */
+  count: number
+  /** Metas cujo prazo já passou e ainda faltam valores. */
+  atrasadas: number
+  concluidas: number
+}
+
+/** Quanto precisamos guardar por mês para cumprir todas as metas no prazo. */
+export function monthlyNeed(goals: Goal[], today: ISODate, moeda: Currency, rates: PerUSD): MonthlyNeed {
+  const out: MonthlyNeed = { total: 0, count: 0, atrasadas: 0, concluidas: 0 }
+  for (const g of goals) {
+    const p = planGoal(g, today)
+    if (p.status === 'concluida') out.concluidas += 1
+    else if (p.status === 'atrasada') out.atrasadas += 1
+    else if (p.porMesCents !== null) {
+      out.total += convert(p.porMesCents, g.moeda, moeda, rates)
+      out.count += 1
+    }
+  }
+  return out
 }

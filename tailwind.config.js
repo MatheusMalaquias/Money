@@ -17,6 +17,8 @@ export default {
         good: v('good'),
         bad: v('bad'),
         warn: v('warn'),
+        s1: v('s1'),
+        s2: v('s2'),
       },
     },
   },

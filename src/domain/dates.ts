@@ -33,3 +33,9 @@ export function monthLabel(key: string): string {
   const d = new Date(Date.UTC(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, 1))
   return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 }
+
+/** Soma dias a uma data ISO, sem depender do fuso (UTC evita o salto do horário de verão). */
+export function addDays(iso: ISODate, n: number): ISODate {
+  const d = new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) + n))
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
+}

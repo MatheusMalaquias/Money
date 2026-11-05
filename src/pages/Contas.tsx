@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { billState, sortBills } from '../domain/bills'
-import { clampedDate, diffDays, todayISO, toBR } from '../domain/dates'
+import { billState, dueLabel, sortBills } from '../domain/bills'
+import { clampedDate, todayISO, toBR } from '../domain/dates'
 import { cardInvoice, DEFAULT_CARD } from '../domain/card'
 import { occurrences } from '../domain/recurrence'
 import { centsToInput, convert, formatMoney, parseAmount } from '../domain/money'
@@ -15,13 +15,10 @@ const REC_LABEL: Record<Recurrence, string> = { unica: 'Única', mensal: 'Mensal
 /** Parcelas ainda pendentes da mesma conta (incluindo esta). */
 const remaining = (bills: Bill[], b: Bill) => bills.filter((x) => x.serieId === b.serieId && x.status === 'pendente').length
 
+const URGENCY_CLS = { paga: 'text-muted', atrasada: 'text-bad font-medium', urgente: 'text-warn font-medium', normal: 'text-muted' } as const
 function dueText(b: Bill, today: string): { text: string; cls: string } {
-  if (b.status === 'paga') return { text: `Paga em ${toBR(b.pagaEm!)}`, cls: 'text-muted' }
-  const d = diffDays(today, b.vencimento)
-  if (d < 0) return { text: `Vencida há ${-d} ${-d === 1 ? 'dia' : 'dias'}`, cls: 'text-bad font-medium' }
-  if (d === 0) return { text: 'Vence hoje', cls: 'text-warn font-medium' }
-  if (d <= 7) return { text: `Vence em ${d} ${d === 1 ? 'dia' : 'dias'}`, cls: 'text-warn font-medium' }
-  return { text: `Vence ${toBR(b.vencimento)}`, cls: 'text-muted' }
+  const d = dueLabel(b, today)
+  return { text: d.text, cls: URGENCY_CLS[d.urgency] }
 }
 
 export default function Contas({ pessoa, onPessoa }: { pessoa: PersonId | 'todos'; onPessoa: (p: PersonId | 'todos') => void }) {

@@ -1,4 +1,4 @@
-import { diffDays } from './dates'
+import { diffDays, toBR } from './dates'
 import { nextDue, occurrences } from './recurrence'
 import type { Bill, ISODate, PerUSD, Transaction } from './types'
 
@@ -109,4 +109,14 @@ export function planNewBill(bill: Bill, all: Bill[], { paidOn, now, perUSD, newI
   bills = bills.map((b) => (b.id === bill.id ? r.bill : b))
   if (r.next) bills.push(r.next)
   return { bills, transaction: r.transaction }
+}
+
+/** Frase do vencimento ("Vencida há 3 dias", "Vence em 2 dias") e o quão urgente é. */
+export function dueLabel(b: Bill, today: ISODate): { text: string; urgency: 'paga' | 'atrasada' | 'urgente' | 'normal' } {
+  if (b.status === 'paga') return { text: `Paga em ${toBR(b.pagaEm!)}`, urgency: 'paga' }
+  const d = diffDays(today, b.vencimento)
+  if (d < 0) return { text: `Vencida há ${-d} ${-d === 1 ? 'dia' : 'dias'}`, urgency: 'atrasada' }
+  if (d === 0) return { text: 'Vence hoje', urgency: 'urgente' }
+  if (d <= 7) return { text: `Vence em ${d} ${d === 1 ? 'dia' : 'dias'}`, urgency: 'urgente' }
+  return { text: `Vence ${toBR(b.vencimento)}`, urgency: 'normal' }
 }

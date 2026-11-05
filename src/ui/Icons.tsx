@@ -11,3 +11,4 @@ export const IconBills = () => <Svg><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><pa
 export const IconSwap = () => <Svg><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7" /></Svg>
 export const IconPlan = () => <Svg><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4" /><path d="M12 12 19 5" /></Svg>
 export const IconGear = () => <Svg><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" /></Svg>
+export const IconHome = () => <Svg><path d="M3 11 12 3l9 8" /><path d="M5 10v10h14V10" /><path d="M10 20v-6h4v6" /></Svg>

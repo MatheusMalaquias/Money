@@ -6,6 +6,7 @@ import { CURRENCIES, type Category, type Currency } from '../domain/types'
 import { newId, nowISO, useApp } from '../state/data'
 import type { ThemePref } from '../theme'
 import { Segmented, inputCls } from '../ui/fields'
+import { shareOrDownload } from '../services/files'
 import { Card, Screen } from '../ui/Screen'
 
 const THEMES: { value: ThemePref; label: string }[] = [
@@ -178,23 +179,8 @@ function BackupCard() {
   const doExport = async () => {
     const json = JSON.stringify(buildBackup(await exportData(), nowISO()), null, 2)
     const file = new File([json], backupFileName(todayISO()), { type: 'application/json' })
-    try {
-      // no celular abre a folha de compartilhamento (Salvar em Arquivos, enviar por WhatsApp…)
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file] })
-        setMsg({ ok: true, text: 'Backup pronto.' })
-        return
-      }
-    } catch (e) {
-      if ((e as Error).name === 'AbortError') return // a pessoa fechou a folha de compartilhamento
-    }
-    const url = URL.createObjectURL(file)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = file.name
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-    setMsg({ ok: true, text: `Backup baixado: ${file.name}` })
+    if (!(await shareOrDownload(file))) return // a pessoa fechou a folha de compartilhamento
+    setMsg({ ok: true, text: 'Backup pronto.' })
   }
 
   const doImport = async (file: File) => {
