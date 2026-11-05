@@ -8,6 +8,7 @@ import type { ThemePref } from '../theme'
 import { Segmented, inputCls } from '../ui/fields'
 import { PIN_RE } from '../lock'
 import { shareOrDownload } from '../services/files'
+import { useCloud } from '../cloud/CloudGate'
 import { useLock } from '../ui/LockGate'
 import { Card, Screen } from '../ui/Screen'
 
@@ -51,6 +52,7 @@ export default function Config({ theme, onTheme }: { theme: ThemePref; onTheme: 
       <CardCfgCard />
       <RatesCard />
       <CategoriesCard />
+      <CloudCard />
       <SecurityCard />
       <BackupCard />
       <ResetCard />
@@ -175,6 +177,8 @@ function CategoriesCard() {
 
 /** Os dados ficam só neste aparelho: o backup é a única cópia de segurança. */
 function BackupCard() {
+  const cloud = useCloud()
+  const cloudBackupNote = () => (cloud.configured ? 'Uma cópia de segurança em arquivo. Importar um backup substitui também os dados na nuvem (e no outro aparelho).' : 'Seus dados ficam só neste aparelho. Exporte de vez em quando: é também como passam os dados de um celular para outro.')
   const { exportData, importData } = useApp()
   const input = useRef<HTMLInputElement>(null)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -201,7 +205,7 @@ function BackupCard() {
   return (
     <Card className="space-y-3">
       <h2 className={h2}>Backup</h2>
-      <p className="text-xs text-muted">Seus dados ficam só neste aparelho. Exporte de vez em quando: é também como passam os dados de um celular para outro.</p>
+      <p className="text-xs text-muted">{cloudBackupNote()}</p>
       <div className="grid grid-cols-2 gap-2">
         <button onClick={() => void doExport()} className="rounded-lg bg-accent py-2.5 text-sm font-semibold text-on-accent">Exportar</button>
         <button onClick={() => input.current?.click()} className="rounded-lg border border-line py-2.5 text-sm font-medium">Importar</button>
@@ -214,6 +218,7 @@ function BackupCard() {
 
 /** Apaga os dados (lançamentos, contas, metas, reserva) e mantém os ajustes e as categorias. Exige digitar ZERAR. */
 function ResetCard() {
+  const cloud = useCloud()
   const { categories, settings, importData } = useApp()
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
@@ -231,7 +236,7 @@ function ResetCard() {
     <Card className="space-y-3 border-bad/40">
       <h2 className="text-sm font-semibold text-bad">Zerar tudo</h2>
       <p className="text-xs text-muted">
-        Apaga todos os lançamentos, contas, metas e movimentos da reserva <b>deste aparelho</b>. Os ajustes (nomes, moeda, dízimo, câmbio) e as categorias ficam. Não dá para desfazer: faça um Exportar antes se quiser guardar uma cópia.
+        Apaga todos os lançamentos, contas, metas e movimentos da reserva <b>{cloud.configured ? 'deste aparelho e da nuvem (o outro aparelho recebe a mudança)' : 'deste aparelho'}</b>. Os ajustes (nomes, moeda, dízimo, câmbio) e as categorias ficam. Não dá para desfazer: faça um Exportar antes se quiser guardar uma cópia.
       </p>
       {!open ? (
         <button onClick={() => { setOpen(true); setDone(false) }} className="w-full rounded-lg border border-bad/60 py-2.5 text-sm font-medium text-bad">
@@ -355,6 +360,66 @@ function SecurityCard() {
         </div>
       )}
       {msg && <p role="status" className={`text-xs ${msg.ok ? 'text-good' : 'text-bad'}`}>{msg.text}</p>}
+    </Card>
+  )
+}
+
+const fmtAgo = (t: number | null) => {
+  if (!t) return ''
+  const s = Math.round((Date.now() - t) / 1000)
+  return s < 10 ? 'agora há pouco' : s < 60 ? `há ${s} s` : s < 3600 ? `há ${Math.round(s / 60)} min` : `há ${Math.round(s / 3600)} h`
+}
+
+/** Conta (login), espaço do casal e estado da sincronização. Só aparece quando o app está ligado ao Supabase. */
+function CloudCard() {
+  const cloud = useCloud()
+  const [copied, setCopied] = useState(false)
+  if (!cloud.configured) return null
+  const st = cloud.status
+  const text =
+    st.state === 'syncing' ? 'Sincronizando…'
+    : st.state === 'offline' ? `Sem conexão${st.pending ? `: ${st.pending} ${st.pending === 1 ? 'alteração sobe' : 'alterações sobem'} quando voltar` : ''}`
+    : st.state === 'error' ? `Erro ao sincronizar: ${st.error ?? 'tente de novo'}`
+    : st.pending ? `${st.pending} ${st.pending === 1 ? 'alteração' : 'alterações'} para enviar` : `Sincronizado ${fmtAgo(st.lastSync)}`
+  const code = cloud.household?.invite_code
+
+  const copy = async () => {
+    if (!code) return
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* sem permissão de área de transferência: o código está na tela */
+    }
+  }
+  const leave = async () => {
+    const extra = st.pending ? ` Há ${st.pending} alteração(ões) não enviada(s): ela(s) serão enviadas antes, se houver conexão.` : ''
+    if (confirm(`Sair desta conta apaga os dados DESTE aparelho (eles continuam na nuvem e voltam ao entrar de novo).${extra} Continuar?`)) await cloud.signOut()
+  }
+
+  return (
+    <Card className="space-y-3">
+      <h2 className={h2}>Conta e sincronização</h2>
+      <div className="space-y-0.5">
+        <p className="break-all text-sm font-medium">{cloud.email}</p>
+        <p role="status" className={`text-xs ${st.state === 'error' ? 'text-bad' : st.state === 'offline' ? 'text-warn' : 'text-muted'}`}>{text}</p>
+      </div>
+      {code && (
+        <div className="space-y-1 rounded-lg bg-raised px-3 py-2">
+          <p className="text-xs text-muted">
+            Código do espaço {cloud.household && cloud.household.members < 2 ? '· envie para a outra pessoa entrar' : '· as duas pessoas já entraram'}
+          </p>
+          <div className="flex items-center justify-between gap-2">
+            <code className="num select-all text-sm font-semibold tracking-wider">{code}</code>
+            <button onClick={() => void copy()} className="rounded-full border border-line px-3 py-1 text-xs">{copied ? 'Copiado ✓' : 'Copiar'}</button>
+          </div>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => void cloud.syncNow()} disabled={st.state === 'syncing'} className="rounded-lg bg-accent py-2.5 text-sm font-semibold text-on-accent disabled:opacity-40">Sincronizar agora</button>
+        <button onClick={() => void leave()} className="rounded-lg border border-line py-2.5 text-sm font-medium">Sair da conta</button>
+      </div>
     </Card>
   )
 }

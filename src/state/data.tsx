@@ -122,7 +122,7 @@ export const useApp = () => {
   return v
 }
 
-export function DataProvider({ children, storage: injected }: { children: ReactNode; storage?: Storage }) {
+export function DataProvider({ children, storage: injected, refreshKey = 0 }: { children: ReactNode; storage?: Storage; /** Muda quando a nuvem trouxe dados novos: relê tudo do armazenamento. */ refreshKey?: number }) {
   const st = useRef<Storage | null>(null)
   const [ready, setReady] = useState(false)
   const [persistent, setPersistent] = useState(true)
@@ -160,6 +160,25 @@ export function DataProvider({ children, storage: injected }: { children: ReactN
       alive = false
     }
   }, [injected])
+
+  // a nuvem trouxe mudanças de outro aparelho: relê tudo (sem recriar categorias nem configurações)
+  useEffect(() => {
+    if (!ready || refreshKey === 0 || !st.current) return
+    let alive = true
+    void loadAll(st.current).then((r) => {
+      if (!alive) return
+      setSettings(r.settings)
+      setCategories(byOrder(r.categories))
+      setBills(r.bills)
+      setTransactions(r.transactions)
+      setGoals(r.goals)
+      setRules(r.rules)
+    })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey])
 
   const updateSettings = useCallback(async (patch: Partial<Settings>) => {
     const next = { ...live.current.settings, ...patch }

@@ -1,6 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Settings } from '../domain/types'
-import { STORE_NAMES, type Entities, type Snapshot, type Storage, type StoreName } from './types'
+import { STORE_NAMES, type Entities, type Outbox, type OutboxOp, type Snapshot, type Storage, type StoreName } from './types'
 
 interface MoneyDB extends DBSchema {
   categories: { key: string; value: Entities['categories'] }
@@ -9,19 +9,26 @@ interface MoneyDB extends DBSchema {
   goals: { key: string; value: Entities['goals'] }
   rules: { key: string; value: Entities['rules'] }
   settings: { key: string; value: Settings & { key: string } }
+  outbox: { key: string; value: OutboxOp }
 }
 
 const SETTINGS_KEY = 'app'
 
-export async function createIndexedDBStorage(name = 'money'): Promise<Storage> {
-  const db: IDBPDatabase<MoneyDB> = await openDB<MoneyDB>(name, 1, {
-    upgrade(d) {
+export async function createIndexedDBStorage(name = 'money'): Promise<Storage & { outbox: Outbox }> {
+  const db: IDBPDatabase<MoneyDB> = await openDB<MoneyDB>(name, 2, {
+    upgrade(d, oldVersion) {
+      // v2 só acrescentou a fila de envio para a nuvem: quem já tem a v1 mantém os dados
+      if (oldVersion >= 1) {
+        d.createObjectStore('outbox', { keyPath: 'key' })
+        return
+      }
       for (const s of STORE_NAMES) {
         const store = d.createObjectStore(s, { keyPath: 'id' }) as unknown as IDBObjectStore
         if (s === 'bills') store.createIndex('vencimento', 'vencimento')
         if (s === 'transactions') store.createIndex('data', 'data')
       }
       d.createObjectStore('settings', { keyPath: 'key' })
+      d.createObjectStore('outbox', { keyPath: 'key' })
     },
   })
 
@@ -32,8 +39,29 @@ export async function createIndexedDBStorage(name = 'money'): Promise<Storage> {
     return settings
   }
 
+  const outbox: Outbox = {
+    async add(op) {
+      const key = `${op.store}:${op.id}`
+      await db.put('outbox', { ...op, key, at: Date.now() * 1000 + Math.floor(Math.random() * 1000) })
+    },
+    list: () => db.getAll('outbox'),
+    async remove(ops) {
+      const tx = db.transaction('outbox', 'readwrite')
+      for (const o of ops) {
+        const cur = await tx.store.get(o.key)
+        if (cur && cur.at === o.at) await tx.store.delete(o.key)
+      }
+      await tx.done
+    },
+    async clear() {
+      await db.clear('outbox')
+    },
+  }
+
   return {
+    outbox,
     getAll: (store) => db.getAll(store as StoreName) as never,
+    get: (store, id) => db.get(store as StoreName, id) as never,
     async put(store, item) {
       await db.put(store as StoreName, item as never)
     },
