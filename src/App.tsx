@@ -51,7 +51,7 @@ function Shell() {
           <>
             {tab === 'inicio' && <Inicio onGo={(to) => setTab(GO[to])} />}
             {tab === 'mes' && <Mes mes={mes} onMes={setMes} pessoa={pessoa} onPessoa={setPessoa} />}
-            {tab === 'contas' && <Contas pessoa={pessoa} onPessoa={setPessoa} />}
+            {tab === 'contas' && <Contas pessoa={pessoa} onPessoa={setPessoa} mes={mes} onMes={setMes} />}
             {tab === 'lancar' && <Lancar mes={mes} onMes={setMes} pessoa={pessoa} onPessoa={setPessoa} />}
             {tab === 'plano' && <Plano pessoa={pessoa} onPessoa={setPessoa} />}
             {tab === 'ajustes' && <Config theme={theme} onTheme={setTheme} />}

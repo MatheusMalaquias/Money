@@ -1,6 +1,6 @@
 import { diffDays, toBR } from './dates'
 import { nextDue, occurrences } from './recurrence'
-import type { Bill, ISODate, PerUSD, Transaction } from './types'
+import type { Bill, ISODate, PerUSD, PersonId, Transaction } from './types'
 
 export type BillState = 'paga' | 'vencida' | 'semana' | 'futura'
 
@@ -119,4 +119,14 @@ export function dueLabel(b: Bill, today: ISODate): { text: string; urgency: 'pag
   if (d === 0) return { text: 'Vence hoje', urgency: 'urgente' }
   if (d <= 7) return { text: `Vence em ${d} ${d === 1 ? 'dia' : 'dias'}`, urgency: 'urgente' }
   return { text: `Vence ${toBR(b.vencimento)}`, urgency: 'normal' }
+}
+
+/** Contas de um mês agrupadas pelo dia do vencimento (para o calendário). */
+export function billsByDay(bills: Bill[], mes: string, pessoa: PersonId | 'todos'): Map<ISODate, Bill[]> {
+  const out = new Map<ISODate, Bill[]>()
+  for (const b of bills) {
+    if (b.vencimento.slice(0, 7) !== mes || (pessoa !== 'todos' && b.pessoa !== pessoa)) continue
+    out.set(b.vencimento, [...(out.get(b.vencimento) ?? []), b])
+  }
+  return out
 }

@@ -140,3 +140,31 @@ describe('de onde vem o total', () => {
     expect(b.recebido - b.dizimo - b.pago - b.guardado + b.retirado).toBe(total)
   })
 })
+
+import { calendarGrid } from '../src/domain/dates'
+import { billsByDay } from '../src/domain/bills'
+
+describe('calendário de contas', () => {
+  it('grade do mês começa no domingo e tem um dia por data', () => {
+    const nov = calendarGrid('2026-11') // 1º de novembro de 2026 é domingo
+    expect(nov[0]).toBe('2026-11-01')
+    expect(nov).toHaveLength(30)
+    const out = calendarGrid('2026-10') // 1º de outubro de 2026 é quinta
+    expect(out.slice(0, 4)).toEqual([null, null, null, null])
+    expect(out[4]).toBe('2026-10-01')
+    expect(out).toHaveLength(4 + 31)
+  })
+  it('fevereiro bissexto tem 29 dias', () => {
+    expect(calendarGrid('2028-02').filter(Boolean)).toHaveLength(29)
+  })
+  it('agrupa as contas pelo dia do vencimento, só do mês e da pessoa', () => {
+    const b = (id: string, venc: string, pessoa = 'casal'): Bill => ({
+      id, createdAt: 'c', updatedAt: 'u', descricao: id, valorCents: 100, moeda: 'BRL', vencimento: venc, diaAncora: 1, categoriaId: 'c', pessoa,
+      recorrencia: 'unica', status: 'pendente', serieId: id,
+    })
+    const m = billsByDay([b('a', '2026-11-05'), b('b', '2026-11-05', 'gabi'), b('c', '2026-12-05'), b('d', '2026-11-20')], '2026-11', 'todos')
+    expect([...m.keys()].sort()).toEqual(['2026-11-05', '2026-11-20'])
+    expect(m.get('2026-11-05')).toHaveLength(2)
+    expect(billsByDay([b('a', '2026-11-05'), b('b', '2026-11-05', 'gabi')], '2026-11', 'gabi').get('2026-11-05')).toHaveLength(1)
+  })
+})

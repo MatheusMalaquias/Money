@@ -39,3 +39,11 @@ export function addDays(iso: ISODate, n: number): ISODate {
   const d = new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) + n))
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
 }
+
+/** Células de um calendário mensal que começa no domingo: vazios antes do dia 1 e depois uma data por dia. */
+export function calendarGrid(mes: string): (ISODate | null)[] {
+  const y = Number(mes.slice(0, 4))
+  const m = Number(mes.slice(5, 7))
+  const lead = new Date(Date.UTC(y, m - 1, 1)).getUTCDay() // 0 = domingo
+  return [...Array<null>(lead).fill(null), ...Array.from({ length: daysInMonth(y, m) }, (_, i) => `${mes}-${pad(i + 1)}`)]
+}
