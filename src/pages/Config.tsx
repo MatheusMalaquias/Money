@@ -6,7 +6,9 @@ import { CURRENCIES, type Category, type Currency } from '../domain/types'
 import { newId, nowISO, useApp } from '../state/data'
 import type { ThemePref } from '../theme'
 import { Segmented, inputCls } from '../ui/fields'
+import { PIN_RE } from '../lock'
 import { shareOrDownload } from '../services/files'
+import { useLock } from '../ui/LockGate'
 import { Card, Screen } from '../ui/Screen'
 
 const THEMES: { value: ThemePref; label: string }[] = [
@@ -49,6 +51,7 @@ export default function Config({ theme, onTheme }: { theme: ThemePref; onTheme: 
       <CardCfgCard />
       <RatesCard />
       <CategoriesCard />
+      <SecurityCard />
       <BackupCard />
       <ResetCard />
     </Screen>
@@ -277,5 +280,81 @@ function DayField({ label, value, onSave }: { label: string; value: number; onSa
       <span className="text-xs font-medium text-muted">{label}</span>
       <input inputMode="numeric" value={text} onChange={(e) => setText(e.target.value.replace(/\D/g, '').slice(0, 2))} onBlur={commit} className={`${inputCls} num`} />
     </label>
+  )
+}
+
+/** Bloqueio por PIN: pede o PIN ao abrir e depois de 1 minuto fora do app. */
+function SecurityCard() {
+  const lock = useLock()
+  const [mode, setMode] = useState<'idle' | 'enable' | 'change' | 'disable'>('idle')
+  const [cur, setCur] = useState('')
+  const [pin, setPin] = useState('')
+  const [pin2, setPin2] = useState('')
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const reset = () => {
+    setMode('idle')
+    setCur('')
+    setPin('')
+    setPin2('')
+  }
+  const field = (label: string, v: string, set: (s: string) => void) => (
+    <input type="password" inputMode="numeric" autoComplete="off" maxLength={8} value={v} onChange={(e) => set(e.target.value.replace(/\D/g, ''))} placeholder={label} aria-label={label} className={`${inputCls} num`} />
+  )
+  const needsNew = mode === 'enable' || mode === 'change'
+  const newOk = PIN_RE.test(pin) && pin === pin2
+  const curOk = mode === 'enable' || PIN_RE.test(cur)
+
+  const confirm = async () => {
+    if (mode === 'enable') {
+      await lock.enable(pin)
+      setMsg({ ok: true, text: 'Bloqueio ativado. O PIN será pedido ao abrir o app.' })
+    } else if (mode === 'change') {
+      const ok = await lock.change(cur, pin)
+      setMsg(ok ? { ok: true, text: 'PIN alterado.' } : { ok: false, text: 'PIN atual incorreto.' })
+      if (!ok) return
+    } else if (mode === 'disable') {
+      const ok = await lock.disable(cur)
+      setMsg(ok ? { ok: true, text: 'Bloqueio desativado.' } : { ok: false, text: 'PIN incorreto.' })
+      if (!ok) return
+    }
+    reset()
+  }
+
+  return (
+    <Card className="space-y-3">
+      <h2 className={h2}>Segurança</h2>
+      <p className="text-xs text-muted">
+        O PIN é pedido ao abrir o app e depois de 1 minuto fora dele. Protege se alguém pegar seu celular. Os dados ficam só neste aparelho, sem criptografia, e <b>o PIN não pode ser recuperado</b>: se esquecer, só apagando os dados (faça Exportar antes).
+      </p>
+      {mode === 'idle' ? (
+        lock.enabled ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-good">✓ Bloqueio ativo</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={lock.lockNow} className="rounded-lg bg-accent py-2.5 text-sm font-semibold text-on-accent">Bloquear agora</button>
+              <button onClick={() => { setMode('change'); setMsg(null) }} className="rounded-lg border border-line py-2.5 text-sm font-medium">Alterar PIN</button>
+            </div>
+            <button onClick={() => { setMode('disable'); setMsg(null) }} className="w-full text-xs text-muted underline">Desativar bloqueio</button>
+          </div>
+        ) : (
+          <button onClick={() => { setMode('enable'); setMsg(null) }} className="w-full rounded-lg bg-accent py-2.5 text-sm font-semibold text-on-accent">Ativar bloqueio com PIN</button>
+        )
+      ) : (
+        <div className="space-y-2">
+          {mode !== 'enable' && field('PIN atual', cur, setCur)}
+          {needsNew && field('Novo PIN (4 a 8 números)', pin, setPin)}
+          {needsNew && field('Repita o novo PIN', pin2, setPin2)}
+          {needsNew && pin2 !== '' && pin !== pin2 && <p className="text-xs text-bad">Os dois PINs são diferentes.</p>}
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={reset} className="rounded-lg border border-line py-2.5 text-sm">Cancelar</button>
+            <button onClick={() => void confirm()} disabled={!curOk || (needsNew && !newOk)} className="rounded-lg bg-accent py-2.5 text-sm font-semibold text-on-accent disabled:opacity-40">
+              {mode === 'enable' ? 'Ativar' : mode === 'change' ? 'Alterar' : 'Desativar'}
+            </button>
+          </div>
+        </div>
+      )}
+      {msg && <p role="status" className={`text-xs ${msg.ok ? 'text-good' : 'text-bad'}`}>{msg.text}</p>}
+    </Card>
   )
 }

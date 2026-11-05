@@ -9,6 +9,7 @@ import Lancar from './pages/Lancar'
 import Mes from './pages/Mes'
 import Plano from './pages/Plano'
 import { DataProvider, useApp } from './state/data'
+import LockGate from './ui/LockGate'
 import { useTheme } from './theme'
 import { IconBills, IconGear, IconHome, IconMonth, IconPlan, IconSwap } from './ui/Icons'
 
@@ -28,9 +29,11 @@ const GO: Record<AlertTarget, Tab> = { contas: 'contas', plano: 'plano', lancar:
 
 export default function App() {
   return (
-    <DataProvider>
-      <Shell />
-    </DataProvider>
+    <LockGate>
+      <DataProvider>
+        <Shell />
+      </DataProvider>
+    </LockGate>
   )
 }
 
