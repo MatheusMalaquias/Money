@@ -72,7 +72,7 @@ function Shell() {
           {TABS.map((t) => (
             <li key={t.id}>
               <button
-                onClick={() => setTab(t.id)}
+                onClick={() => { setTab(t.id); window.scrollTo(0, 0) }}
                 aria-current={tab === t.id ? 'page' : undefined}
                 className={`flex w-full flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium ${tab === t.id ? 'text-accent' : 'text-muted'}`}
               >

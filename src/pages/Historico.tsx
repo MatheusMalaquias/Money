@@ -12,7 +12,7 @@ type Kind = 'recebimentos' | 'pagamentos' | 'reserva'
 
 /** Histórico do mês: o que foi recebido, o que foi pago e os movimentos da reserva. */
 export default function Historico({ mes, pessoa }: { mes: string; pessoa: PersonId | 'todos' }) {
-  const { transactions, bills, categories, settings } = useApp()
+  const { transactions, bills, categories, settings, removeTransaction } = useApp()
   const [kind, setKind] = useState<Kind>('recebimentos')
   const [editing, setEditing] = useState<Transaction | null>(null)
   const display = settings.moedaExibicao
@@ -108,7 +108,16 @@ export default function Historico({ mes, pessoa }: { mes: string; pessoa: Person
             return (
               <li key={t.id}>
                 {kind === 'reserva' ? (
-                  <button onClick={() => setEditing(t)} className="flex w-full items-center gap-3 rounded-xl border border-line bg-card px-3.5 py-3 text-left">{row}</button>
+                  <div className="flex items-center gap-2 rounded-xl border border-line bg-card pr-2">
+                    <button onClick={() => setEditing(t)} className="flex min-w-0 flex-1 items-center gap-3 px-3.5 py-3 text-left">{row}</button>
+                    <button
+                      onClick={() => { if (window.confirm(`Excluir "${title}" de ${formatMoney(t.valorCents, t.moeda)}?`)) void removeTransaction(t.id) }}
+                      aria-label={`Excluir ${title}`}
+                      className="shrink-0 rounded-lg px-2.5 py-2 text-xs font-medium text-bad"
+                    >
+                      Excluir
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex items-center gap-3 rounded-xl border border-line bg-card px-3.5 py-3">{row}</div>
                 )}
@@ -118,6 +127,7 @@ export default function Historico({ mes, pessoa }: { mes: string; pessoa: Person
         </ul>
       )}
       {kind !== 'reserva' && list.length > 0 && <p className="text-center text-xs text-muted">Para editar ou excluir, use a aba Lançar.</p>}
+      {kind === 'reserva' && list.length > 0 && <p className="text-center text-xs text-muted">Toque no movimento para editar, ou em Excluir para apagar. Só aparecem os do mês escolhido.</p>}
 
       {editing && <ReserveSheet tx={editing} defaultPessoa={editing.pessoa} onClose={() => setEditing(null)} />}
     </div>
