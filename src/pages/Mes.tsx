@@ -12,6 +12,7 @@ import ReserveSheet, { type ReserveMode } from '../ui/ReserveSheet'
 import { Card, Screen } from '../ui/Screen'
 import Dizimo from './Dizimo'
 import Historico from './Historico'
+import Orcamento from './Orcamento'
 import Relatorios from './Relatorios'
 
 interface Props {
@@ -21,7 +22,7 @@ interface Props {
   onPessoa: (p: PersonId | 'todos') => void
 }
 
-type Aba = 'resumo' | 'historico' | 'dizimo' | 'relatorios'
+type Aba = 'resumo' | 'historico' | 'dizimo' | 'relatorios' | 'orcamento'
 
 export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
   const { transactions, bills, settings, ratesStatus, refreshRates } = useApp()
@@ -62,12 +63,13 @@ export default function Mes({ mes, onMes, pessoa, onPessoa }: Props) {
         label="Painel"
         value={aba}
         onChange={setAba}
-        options={[{ value: 'resumo', label: 'Resumo' }, { value: 'historico', label: 'Histórico' }, { value: 'relatorios', label: 'Gráficos' }, { value: 'dizimo', label: 'Dízimo' }]}
+        options={[{ value: 'resumo', label: 'Resumo' }, { value: 'historico', label: 'Histórico' }, { value: 'orcamento', label: 'Limites' }, { value: 'relatorios', label: 'Gráficos' }, { value: 'dizimo', label: 'Dízimo' }]}
       />
 
       {aba === 'dizimo' && <Dizimo mes={mes} pessoa={pessoa} />}
       {aba === 'relatorios' && <Relatorios mes={mes} pessoa={pessoa} />}
       {aba === 'historico' && <Historico mes={mes} pessoa={pessoa} />}
+      {aba === 'orcamento' && <Orcamento mes={mes} />}
       {aba === 'resumo' && (
         <>
           <Card className="space-y-3">

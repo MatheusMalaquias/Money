@@ -3,6 +3,7 @@ import { payBill, planNewBill, reconcileSeries, unpayBill } from '../domain/bill
 import { dedupeCategories } from '../domain/categories'
 import { todayISO, diffDays } from '../domain/dates'
 import { defaultSettings, seedCategories } from '../domain/defaults'
+import { buildSalaryTx, salaryMonths, salaryTxId } from '../domain/salary'
 import { buildTithe, DEFAULT_TITHE_BPS, entersTithe, titheAmount } from '../domain/tithe'
 import { isStale, mergeFetched, setManual } from '../domain/rates'
 import type { Bill, Category, Currency, Goal, PlanRule, Settings, Transaction } from '../domain/types'
@@ -281,6 +282,20 @@ export function DataProvider({ children, storage: injected, refreshKey = 0 }: { 
     [syncTithe]
   )
 
+  // salários fixos: cria a entrada de cada mês que já chegou (uma vez só; o id é fixo por salário e mês)
+  useEffect(() => {
+    if (!ready) return
+    const hoje = todayISO()
+    void (async () => {
+      for (const sal of live.current.settings.salarios ?? []) {
+        for (const mes of salaryMonths(sal, hoje)) {
+          if (live.current.transactions.some((t) => t.id === salaryTxId(sal.id, mes))) continue
+          await saveTransaction(buildSalaryTx(sal, mes, { now: nowISO(), perUSD: live.current.settings.rates.perUSD }))
+        }
+      }
+    })()
+  }, [ready, settings.salarios, saveTransaction])
+
   const saveBill = useCallback(async (b: Bill) => {
     const { add, removeIds } = reconcileSeries(b, live.current.bills, { now: nowISO(), newId })
     await st.current!.putMany('bills', [b, ...add])
@@ -321,12 +336,19 @@ export function DataProvider({ children, storage: injected, refreshKey = 0 }: { 
     async (id: string) => {
       const linked = live.current.bills.find((b) => b.transacaoId === id)
       if (linked) return unpay(linked.id) // lançamento gerado por uma conta: excluir = desfazer o pagamento
+      // entrada de salário fixo apagada à mão: o mês fica marcado para não ser recriado
+      const own = live.current.transactions.find((x) => x.id === id)
+      if (own?.salarioId) {
+        const mes = own.data.slice(0, 7)
+        const salarios = (live.current.settings.salarios ?? []).map((sal) => (sal.id === own.salarioId ? { ...sal, puladas: [...new Set([...(sal.puladas ?? []), mes])] } : sal))
+        await updateSettings({ salarios })
+      }
       // apagar uma entrada leva junto o dízimo que ela gerou
       const gone = new Set([id, ...live.current.transactions.filter((x) => x.dizimoDeId === id).map((x) => x.id)])
       for (const g of gone) await st.current!.remove('transactions', g)
       setTransactions((l) => l.filter((t) => !gone.has(t.id)))
     },
-    [unpay]
+    [unpay, updateSettings]
   )
 
   /** Apaga as contas e, nas já pagas, também o lançamento do pagamento (o valor volta ao total). */

@@ -9,6 +9,7 @@ import { MonthNav } from '../ui/MonthNav'
 import ReserveSheet, { reserveInfo } from '../ui/ReserveSheet'
 import { Card, Screen } from '../ui/Screen'
 import { Fab, Sheet } from '../ui/Sheet'
+import { SalaryCard } from './Salarios'
 
 interface Props {
   mes: string
@@ -34,6 +35,7 @@ export default function Lancar({ mes, onMes, pessoa, onPessoa }: Props) {
     <Screen title="Lançamentos" subtitle="Entradas e saídas">
       <MonthNav mes={mes} onChange={onMes} />
       <PersonFilter settings={settings} value={pessoa} onChange={onPessoa} />
+      <SalaryCard />
 
       {list.length === 0 ? (
         <Card className="border-dashed text-sm text-muted">Nenhum lançamento neste mês. Toque em + para registrar um salário ou um gasto.</Card>

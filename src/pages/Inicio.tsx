@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { summarizeBudget } from '../domain/budget'
 import { buildAlerts, type Alert, type AlertLevel, type AlertTarget } from '../domain/alerts'
 import { averageMonthlySpend, endOfMonth, summarizeBillsDue, summarizeTotals } from '../domain/balance'
 import { dueLabel, sortBills } from '../domain/bills'
@@ -21,7 +22,7 @@ const URGENCY_CLS = { paga: 'text-muted', atrasada: 'text-bad font-medium', urge
 
 /** Visão de administrador: quanto temos, o que pede atenção, quanto precisamos guardar e o que vence logo. */
 export default function Inicio({ onGo }: { onGo: (to: AlertTarget) => void }) {
-  const { transactions, bills, goals, settings } = useApp()
+  const { transactions, bills, goals, settings, categories } = useApp()
   const display = settings.moedaExibicao
   const hoje = todayISO()
   const mes = monthKey(hoje)
@@ -39,7 +40,13 @@ export default function Inicio({ onGo }: { onGo: (to: AlertTarget) => void }) {
     const sobra = totals.total - dueMonth.total
     const mesesReserva = gastoMedio > 0 ? totals.reserva / gastoMedio : null
     const faltaGuardar = capacity !== null && need.count > 0 ? Math.max(0, need.total - capacity) : null
+    const budget = summarizeBudget({ mes, budgets: settings.orcamentos ?? [], transactions, bills, rates: rates.perUSD, moeda: display })
+    const catName = (id: string) => categories.find((c) => c.id === id)?.nome ?? 'Categoria'
     const alerts = buildAlerts({
+      orcamento: {
+        estourou: budget.rows.filter((r) => r.nivel === 'estourou').map((r) => catName(r.categoriaId)),
+        passa: budget.rows.filter((r) => r.nivel === 'passa').map((r) => catName(r.categoriaId)),
+      },
       atrasadas: dueMonth.vencidas,
       proximas: { count: dueWeek.count - dueWeek.vencidas.count, total: dueWeek.total - dueWeek.vencidas.total },
       sobra,
@@ -51,9 +58,9 @@ export default function Inicio({ onGo }: { onGo: (to: AlertTarget) => void }) {
       cambioDesatualizado: isStale(rates, hoje, diffDays),
       money,
     })
-    return { totals, sobra, need, capacity, alerts }
+    return { totals, sobra, need, capacity, alerts, budget }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactions, bills, goals, display, rates, hoje])
+  }, [transactions, bills, goals, display, rates, hoje, settings.orcamentos, categories])
 
   const proximas = sortBills(bills.filter((b) => b.status === 'pendente')).slice(0, 4)
   const metas = goals
@@ -100,6 +107,35 @@ export default function Inicio({ onGo }: { onGo: (to: AlertTarget) => void }) {
           </ul>
         )}
       </section>
+
+      {v.budget.rows.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-muted">Limites do mês</h2>
+          <Card className="space-y-3">
+            <ul className="space-y-3">
+              {v.budget.rows.slice(0, 4).map((r) => {
+                const c = categories.find((x) => x.id === r.categoriaId)
+                const pct = Math.min(100, (r.gasto / r.limite) * 100)
+                const color = r.nivel === 'estourou' ? 'rgb(var(--bad))' : r.nivel === 'ok' ? 'rgb(var(--accent))' : 'rgb(var(--warn))'
+                return (
+                  <li key={r.categoriaId} className="space-y-1">
+                    <div className="flex items-baseline justify-between gap-2 text-sm">
+                      <span className="min-w-0 truncate font-medium">{c?.nome ?? 'Categoria'}</span>
+                      <span className="num shrink-0 text-xs text-muted">
+                        {money(r.gasto)} de {money(r.limite)}
+                        {r.nivel === 'estourou' && <b className="font-semibold text-bad"> · ! estourou</b>}
+                        {(r.nivel === 'perto' || r.nivel === 'passa') && <b className="font-semibold text-warn"> · ▲ atenção</b>}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-r bg-raised"><div className="h-full rounded-r" style={{ width: `${pct}%`, background: color }} /></div>
+                  </li>
+                )
+              })}
+            </ul>
+            <button onClick={() => onGo('painel')} className="w-full rounded-lg border border-line py-2.5 text-sm font-medium text-accent">Ver no Painel › Limites</button>
+          </Card>
+        </section>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-muted">Quanto precisamos guardar</h2>

@@ -26,7 +26,7 @@ export function Segmented<T extends string>({ value, onChange, options, label }:
           role="radio"
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
-          className={`rounded-md py-2 text-sm font-medium ${value === o.value ? 'bg-accent text-on-accent' : 'text-muted'}`}
+          className={`rounded-md py-2 font-medium ${options.length > 4 ? 'text-xs' : 'text-sm'} ${value === o.value ? 'bg-accent text-on-accent' : 'text-muted'}`}
         >
           {o.label}
         </button>

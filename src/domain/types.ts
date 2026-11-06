@@ -69,6 +69,8 @@ export interface Transaction extends Base {
   dizimo?: boolean
   /** Saída gerada automaticamente: id da entrada que originou este dízimo. */
   dizimoDeId?: string
+  /** Entrada gerada por um salário fixo (ver Settings.salarios). */
+  salarioId?: string
   /** Câmbio no momento do lançamento: o mês passado não muda quando a cotação muda. */
   cambio: PerUSD
 }
@@ -103,6 +105,32 @@ export interface CardCfg {
   vencimento: number
 }
 
+/** Salário que se repete todo mês: vira uma entrada sozinho no dia combinado (ver domain/salary.ts). */
+export interface Salary {
+  id: string
+  descricao: string
+  valorCents: number
+  moeda: Currency
+  pessoa: PersonId
+  categoriaId: string
+  /** Dia do mês em que cai (1 a 31; em meses curtos vale o último dia). */
+  dia: number
+  /** Primeiro e último mês ("YYYY-MM"); sem fim, repete para sempre. */
+  inicio: string
+  fim?: string
+  /** false = este salário fica fora do dízimo. */
+  dizimo?: boolean
+  /** Meses em que a entrada foi apagada à mão: não volta a ser criada. */
+  puladas?: string[]
+}
+
+/** Limite mensal de gastos de uma categoria. */
+export interface Budget {
+  categoriaId: string
+  valorCents: number
+  moeda: Currency
+}
+
 export interface Settings {
   moedaExibicao: Currency
   /** Dízimo sobre as entradas, em pontos-base (1000 = 10%). 0 desliga. */
@@ -110,6 +138,8 @@ export interface Settings {
   /** Fatura do cartão de crédito. */
   cartao?: CardCfg
   pessoas: { id: PersonId; nome: string }[]
+  salarios?: Salary[]
+  orcamentos?: Budget[]
   rates: RatesState
   schemaVersion: number
 }

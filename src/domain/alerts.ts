@@ -21,6 +21,8 @@ interface Input {
   metasAtrasadas: number
   /** Falta guardar mais por mês do que costuma sobrar (null = sem dados). */
   faltaGuardar: number | null
+  /** Nomes das categorias cujo gasto já passou do limite do mês e das que vão passar com as contas pendentes. */
+  orcamento?: { estourou: string[]; passa: string[] }
   semEntradasNoMes: boolean
   cambioDesatualizado: boolean
   money: (cents: number) => string
@@ -38,6 +40,10 @@ export function buildAlerts(i: Input): Alert[] {
     out.push({ id: 'sobra', nivel: 'critico', titulo: 'O dinheiro não cobre as contas do mês', detalhe: `Faltam ${i.money(-i.sobra)} depois das contas`, destino: 'painel' })
   if (i.metasAtrasadas > 0)
     out.push({ id: 'metas', nivel: 'critico', titulo: `${plural(i.metasAtrasadas, 'meta com prazo vencido', 'metas com prazo vencido')}`, detalhe: 'Atualize a data para recalcular', destino: 'plano' })
+  if (i.orcamento && i.orcamento.estourou.length > 0)
+    out.push({ id: 'orc-estourou', nivel: 'critico', titulo: `${plural(i.orcamento.estourou.length, 'limite estourado', 'limites estourados')} neste mês`, detalhe: i.orcamento.estourou.join(', '), destino: 'painel' })
+  if (i.orcamento && i.orcamento.passa.length > 0)
+    out.push({ id: 'orc-passa', nivel: 'atencao', titulo: `Com as contas do mês, ${plural(i.orcamento.passa.length, 'limite vai passar', 'limites vão passar')}`, detalhe: i.orcamento.passa.join(', '), destino: 'painel' })
   if (i.proximas.count > 0)
     out.push({ id: 'proximas', nivel: 'atencao', titulo: `${plural(i.proximas.count, 'conta vence', 'contas vencem')} nos próximos 7 dias`, detalhe: i.money(i.proximas.total), destino: 'contas' })
   if (i.faltaGuardar !== null && i.faltaGuardar > 0)
