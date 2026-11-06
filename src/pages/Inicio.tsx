@@ -1,14 +1,17 @@
 import { useMemo } from 'react'
+import { summarizeMonth } from '../domain/month'
+import { nextSalaryDate } from '../domain/salary'
 import { summarizeBudget } from '../domain/budget'
 import { buildAlerts, type Alert, type AlertLevel, type AlertTarget } from '../domain/alerts'
 import { averageMonthlySpend, endOfMonth, summarizeBillsDue, summarizeTotals } from '../domain/balance'
 import { dueLabel, sortBills } from '../domain/bills'
-import { addDays, diffDays, monthKey, monthLabel, todayISO } from '../domain/dates'
+import { addDays, diffDays, monthKey, monthLabel, toBR, todayISO } from '../domain/dates'
 import { monthlyNeed, planGoal } from '../domain/goals'
 import { convert, formatMoney } from '../domain/money'
 import { isStale } from '../domain/rates'
-import { averageLeftover, monthlySeries } from '../domain/reports'
+import { averageLeftover, categorySpend, monthlySeries } from '../domain/reports'
 import { useApp } from '../state/data'
+import { ColumnsChart, HBars, Legend, SERIES } from '../ui/charts'
 import { Card, Screen } from '../ui/Screen'
 
 const LEVEL_UI: Record<AlertLevel, { mark: string; label: string; cls: string }> = {
@@ -40,6 +43,14 @@ export default function Inicio({ onGo }: { onGo: (to: AlertTarget) => void }) {
     const sobra = totals.total - dueMonth.total
     const mesesReserva = gastoMedio > 0 ? totals.reserva / gastoMedio : null
     const faltaGuardar = capacity !== null && need.count > 0 ? Math.max(0, need.total - capacity) : null
+    const month = summarizeMonth({ mes, transactions, bills, rates: rates.perUSD, moeda: display, pessoa: 'todos' })
+    const pagos = month.saidas - month.dizimo
+    const fatura = bills.filter((b) => b.status === 'pendente' && b.cartao && monthKey(b.vencimento) === mes)
+    const faturaTotal = fatura.reduce((sum, b) => sum + convert(b.valorCents, b.moeda, display, rates.perUSD), 0)
+    const faturaVence = fatura.map((b) => b.vencimento).sort()[0] ?? null
+    const proxSalario = (settings.salarios ?? []).map((x) => nextSalaryDate(x, hoje)).filter((d): d is string => !!d).sort()[0] ?? null
+    const serie = monthlySeries({ transactions, mes, meses: 6, moeda: display, pessoa: 'todos' })
+    const topCats = categorySpend({ transactions, mes, meses: 1, moeda: display, pessoa: 'todos' }).slice(0, 4)
     const budget = summarizeBudget({ mes, budgets: settings.orcamentos ?? [], transactions, bills, rates: rates.perUSD, moeda: display })
     const catName = (id: string) => categories.find((c) => c.id === id)?.nome ?? 'Categoria'
     const alerts = buildAlerts({
@@ -58,9 +69,9 @@ export default function Inicio({ onGo }: { onGo: (to: AlertTarget) => void }) {
       cambioDesatualizado: isStale(rates, hoje, diffDays),
       money,
     })
-    return { totals, sobra, need, capacity, alerts, budget }
+    return { totals, sobra, need, capacity, alerts, budget, month, pagos, fatura, faturaTotal, faturaVence, proxSalario, serie, topCats }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactions, bills, goals, display, rates, hoje, settings.orcamentos, categories])
+  }, [transactions, bills, goals, display, rates, hoje, settings.orcamentos, settings.salarios, categories])
 
   const proximas = sortBills(bills.filter((b) => b.status === 'pendente')).slice(0, 4)
   const metas = goals
@@ -89,6 +100,19 @@ export default function Inicio({ onGo }: { onGo: (to: AlertTarget) => void }) {
           </button>
         </div>
       </Card>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-muted">Este mês em resumo</h2>
+        <Card className="divide-y divide-line py-1">
+          <Line label="Recebido" value={money(v.month.entradas)} cls="text-good" />
+          <Line label="Dízimo" value={`− ${money(v.month.dizimo)}`} />
+          <Line label="Pago (contas e gastos)" value={`− ${money(v.pagos)}`} />
+          <Line label="Ainda falta pagar" value={money(v.month.faltaPagar)} cls={v.month.faltaPagar > 0 ? 'text-warn' : ''} />
+          {v.faturaTotal > 0 && <Line label={`Fatura do cartão${v.faturaVence ? ` · vence ${toBR(v.faturaVence).slice(0, 5)}` : ''}`} value={money(v.faturaTotal)} small />}
+          <Line label="Resultado do mês" value={money(v.month.entradas - v.month.dizimo - v.pagos)} cls={v.month.entradas - v.month.dizimo - v.pagos < 0 ? 'text-bad' : 'text-good'} strong />
+          {v.proxSalario && <Line label="Próximo salário" value={toBR(v.proxSalario).slice(0, 5)} small />}
+        </Card>
+      </section>
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-muted">O que pede atenção</h2>
@@ -204,9 +228,39 @@ export default function Inicio({ onGo }: { onGo: (to: AlertTarget) => void }) {
           </Card>
         )}
       </section>
+      {v.serie.some((r) => r.recebido > 0 || r.gastos > 0) && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-muted">Últimos 6 meses</h2>
+          <Card className="space-y-3">
+            <Legend series={[{ name: 'Recebido', color: SERIES[0] }, { name: 'Gastos (sem o dízimo)', color: SERIES[1] }]} />
+            <ColumnsChart
+              rows={v.serie.map((r) => ({ mes: r.mes, values: [r.recebido, r.gastos] }))}
+              series={[{ name: 'Recebido', color: SERIES[0] }, { name: 'Gastos', color: SERIES[1] }]}
+              money={money}
+              label="Recebido e gastos dos últimos 6 meses"
+            />
+          </Card>
+        </section>
+      )}
+
+      {v.topCats.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-muted">Onde mais gastamos neste mês</h2>
+          <Card>
+            <HBars rows={v.topCats.map((c) => ({ label: categories.find((x) => x.id === c.categoriaId)?.nome ?? '—', value: c.total }))} money={money} total={v.topCats.reduce((sum, c) => sum + c.total, 0)} />
+          </Card>
+        </section>
+      )}
     </Screen>
   )
 }
+
+const Line = ({ label, value, cls = '', small, strong }: { label: string; value: string; cls?: string; small?: boolean; strong?: boolean }) => (
+  <div className="flex items-baseline justify-between gap-3 py-2.5 text-sm">
+    <span className={strong ? 'font-semibold' : small ? 'text-xs text-muted' : 'text-muted'}>{label}</span>
+    <span className={`num ${strong ? 'text-base font-semibold' : small ? 'text-xs' : 'font-medium'} ${cls}`}>{value}</span>
+  </div>
+)
 
 function AlertRow({ a, onGo }: { a: Alert; onGo: (to: AlertTarget) => void }) {
   const ui = LEVEL_UI[a.nivel]
